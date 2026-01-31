@@ -48,6 +48,13 @@ arrow-schema = "56"
 # Async utilities
 futures = "0.3"
 
+# HTTP server (axum)
+axum = { version = "0.8", features = ["http2"] }
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+tower = { version = "0.5" }
+tower-http = { version = "0.6", features = ["trace", "timeout"] }
+
 # Temporary directories for testing
 tempfile = "3"
 
