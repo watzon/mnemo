@@ -3,5 +3,6 @@
 //! Defines core memory structures and operations for storing
 //! and retrieving semantic memories across different tiers.
 
-/// Memory module placeholder
-pub struct Memory;
+pub mod types;
+
+pub use types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
