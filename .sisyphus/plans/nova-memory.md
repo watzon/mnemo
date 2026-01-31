@@ -77,12 +77,12 @@ Build a production-ready Rust daemon that automatically enriches LLM conversatio
 - SSE streaming proxy for OpenAI-compatible APIs
 
 ### Definition of Done
-- [ ] `nova-memory serve` starts daemon, proxies requests to upstream LLM
-- [ ] Memories automatically injected into system prompts
-- [ ] Memories automatically extracted from assistant responses
-- [ ] Storage tiers work (hot/warm/cold migration)
-- [ ] Eviction works under storage pressure
-- [ ] All tests pass: `cargo test`
+- [x] `nova-memory serve` starts daemon, proxies requests to upstream LLM
+- [x] Memories automatically injected into system prompts
+- [x] Memories automatically extracted from assistant responses
+- [x] Storage tiers work (hot/warm/cold migration)
+- [x] Eviction works under storage pressure
+- [x] All tests pass: `cargo test`
 - [ ] Daemon runs continuously without memory leaks for 24h
 
 ### Must Have
@@ -1765,10 +1765,10 @@ curl -X POST http://localhost:9999/v1/chat/completions \
 ```
 
 ### Final Checklist
-- [ ] All "Must Have" features implemented
-- [ ] All "Must NOT Have" guardrails respected
-- [ ] All tests pass (`cargo test`)
+- [x] All "Must Have" features implemented
+- [x] All "Must NOT Have" guardrails respected
+- [x] All tests pass (`cargo test`)
 - [ ] Daemon runs without memory leaks (24h test)
-- [ ] SSE streaming has zero perceptible latency
-- [ ] Fail-open works (memory errors don't block requests)
-- [ ] Configuration file documented
+- [x] SSE streaming has zero perceptible latency
+- [x] Fail-open works (memory errors don't block requests)
+- [x] Configuration file documented

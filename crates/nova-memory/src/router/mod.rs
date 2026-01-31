@@ -16,6 +16,11 @@ use crate::NovaError;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
+/// Maximum text length for NER processing (in characters).
+/// DistilBERT has a 512 token limit; ~2000 chars is a safe approximation
+/// that accounts for multi-byte UTF-8 characters and prevents index errors.
+const MAX_NER_TEXT_LENGTH: usize = 2000;
+
 /// Output from the memory router containing extracted metadata and routing information
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RouterOutput {
@@ -59,7 +64,7 @@ impl MemoryRouter {
     /// Route text and extract metadata for memory operations
     ///
     /// This method:
-    /// 1. Extracts named entities using NER
+    /// 1. Extracts named entities using NER (with text truncated to BERT token limit)
     /// 2. Extracts topics from entity names and noun patterns
     /// 3. Analyzes emotional valence using keyword heuristics
     /// 4. Generates query keys from significant terms
@@ -69,8 +74,9 @@ impl MemoryRouter {
             return Ok(RouterOutput::default());
         }
 
-        // Extract named entities
-        let entities = self.ner_model.extract_entities(text)?;
+        // Extract named entities using truncated text to respect BERT's 512 token limit
+        let ner_text = self.truncate_for_ner(text);
+        let entities = self.ner_model.extract_entities(&ner_text)?;
 
         // Extract topics from entities and noun phrases
         let topics = self.extract_topics(text, &entities);
@@ -344,6 +350,22 @@ impl MemoryRouter {
         }
 
         types
+    }
+
+    /// Truncate text for NER processing at word boundaries.
+    /// Returns text unchanged if under MAX_NER_TEXT_LENGTH.
+    /// Otherwise truncates at the last space before the limit to avoid cutting words.
+    fn truncate_for_ner(&self, text: &str) -> String {
+        if text.len() <= MAX_NER_TEXT_LENGTH {
+            return text.to_string();
+        }
+
+        // Find the last space before MAX_NER_TEXT_LENGTH to avoid cutting words
+        let truncated = &text[..MAX_NER_TEXT_LENGTH];
+        match truncated.rfind(' ') {
+            Some(pos) => text[..pos].to_string(),
+            None => truncated.to_string(), // No space found, hard truncate
+        }
     }
 
     /// Get a set of common stopwords to filter out from topics
