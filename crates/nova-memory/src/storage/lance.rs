@@ -2,16 +2,23 @@ use std::path::Path;
 use std::sync::Arc;
 
 use arrow_array::{
-    FixedSizeListArray, Float32Array, Int32Array, RecordBatch, RecordBatchIterator, StringArray,
-    TimestampMicrosecondArray,
+    Array, FixedSizeListArray, Float32Array, Int32Array, RecordBatch, RecordBatchIterator,
+    StringArray, TimestampMicrosecondArray,
 };
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
+use chrono::{TimeZone, Utc};
+use futures::TryStreamExt;
 use lancedb::connection::Connection;
 use lancedb::index::vector::IvfPqIndexBuilder;
 use lancedb::index::Index;
+use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::Table;
+use uuid::Uuid;
 
 use crate::error::{NovaError, Result};
+use crate::memory::types::{
+    CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
+};
 
 const EMBEDDING_DIMENSIONS: i32 = 384;
 const MEMORIES_TABLE: &str = "memories";
@@ -176,6 +183,392 @@ impl LanceStore {
     pub fn memories_table(&self) -> Option<&Table> {
         self.memories_table.as_ref()
     }
+
+    /// Convert a Memory struct to an Arrow RecordBatch
+    fn memory_to_batch(memory: &Memory, schema: Arc<Schema>) -> Result<RecordBatch> {
+        Self::memories_to_batch(&[memory.clone()], schema)
+    }
+
+    /// Convert multiple Memory structs to an Arrow RecordBatch
+    fn memories_to_batch(memories: &[Memory], schema: Arc<Schema>) -> Result<RecordBatch> {
+        let ids: Vec<String> = memories.iter().map(|m| m.id.to_string()).collect();
+        let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
+        
+        let contents: Vec<&str> = memories.iter().map(|m| m.content.as_str()).collect();
+        
+        let embeddings: Vec<Option<Vec<Option<f32>>>> = memories
+            .iter()
+            .map(|m| Some(m.embedding.iter().map(|&v| Some(v)).collect()))
+            .collect();
+        
+        let memory_types: Vec<&str> = memories
+            .iter()
+            .map(|m| match m.memory_type {
+                MemoryType::Episodic => "Episodic",
+                MemoryType::Semantic => "Semantic",
+                MemoryType::Procedural => "Procedural",
+            })
+            .collect();
+        
+        let weights: Vec<f32> = memories.iter().map(|m| m.weight).collect();
+        
+        let created_at: Vec<i64> = memories
+            .iter()
+            .map(|m| m.created_at.timestamp_micros())
+            .collect();
+        
+        let last_accessed: Vec<i64> = memories
+            .iter()
+            .map(|m| m.last_accessed.timestamp_micros())
+            .collect();
+        
+        let access_counts: Vec<i32> = memories.iter().map(|m| m.access_count as i32).collect();
+        
+        let conversation_ids: Vec<Option<&str>> = memories
+            .iter()
+            .map(|m| m.conversation_id.as_deref())
+            .collect();
+        
+        let sources: Vec<&str> = memories
+            .iter()
+            .map(|m| match m.source {
+                MemorySource::Conversation => "Conversation",
+                MemorySource::File => "File",
+                MemorySource::Web => "Web",
+                MemorySource::Manual => "Manual",
+            })
+            .collect();
+        
+        let tiers: Vec<&str> = memories
+            .iter()
+            .map(|m| match m.tier {
+                StorageTier::Hot => "Hot",
+                StorageTier::Warm => "Warm",
+                StorageTier::Cold => "Cold",
+            })
+            .collect();
+        
+        let compressions: Vec<&str> = memories
+            .iter()
+            .map(|m| match m.compression {
+                CompressionLevel::Full => "Full",
+                CompressionLevel::Summary => "Summary",
+                CompressionLevel::Keywords => "Keywords",
+                CompressionLevel::Hash => "Hash",
+            })
+            .collect();
+
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(id_refs)),
+                Arc::new(StringArray::from(contents)),
+                Arc::new(FixedSizeListArray::from_iter_primitive::<
+                    arrow_array::types::Float32Type,
+                    _,
+                    _,
+                >(embeddings, EMBEDDING_DIMENSIONS)),
+                Arc::new(StringArray::from(memory_types)),
+                Arc::new(Float32Array::from(weights)),
+                Arc::new(
+                    TimestampMicrosecondArray::from(created_at).with_timezone("UTC"),
+                ),
+                Arc::new(
+                    TimestampMicrosecondArray::from(last_accessed).with_timezone("UTC"),
+                ),
+                Arc::new(Int32Array::from(access_counts)),
+                Arc::new(StringArray::from(conversation_ids)),
+                Arc::new(StringArray::from(sources)),
+                Arc::new(StringArray::from(tiers)),
+                Arc::new(StringArray::from(compressions)),
+            ],
+        )
+        .map_err(|e| NovaError::Storage(format!("Failed to create RecordBatch: {}", e)))
+    }
+
+    /// Convert an Arrow RecordBatch row back to a Memory struct
+    fn batch_to_memory(batch: &RecordBatch, row: usize) -> Result<Memory> {
+        let id_array = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get id column".to_string()))?;
+        
+        let content_array = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get content column".to_string()))?;
+        
+        let embedding_array = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<FixedSizeListArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get embedding column".to_string()))?;
+        
+        let memory_type_array = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get memory_type column".to_string()))?;
+        
+        let weight_array = batch
+            .column(4)
+            .as_any()
+            .downcast_ref::<Float32Array>()
+            .ok_or_else(|| NovaError::Storage("Failed to get weight column".to_string()))?;
+        
+        let created_at_array = batch
+            .column(5)
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get created_at column".to_string()))?;
+        
+        let last_accessed_array = batch
+            .column(6)
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get last_accessed column".to_string()))?;
+        
+        let access_count_array = batch
+            .column(7)
+            .as_any()
+            .downcast_ref::<Int32Array>()
+            .ok_or_else(|| NovaError::Storage("Failed to get access_count column".to_string()))?;
+        
+        let conversation_id_array = batch
+            .column(8)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get conversation_id column".to_string()))?;
+        
+        let source_array = batch
+            .column(9)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get source column".to_string()))?;
+        
+        let tier_array = batch
+            .column(10)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get tier column".to_string()))?;
+        
+        let compression_array = batch
+            .column(11)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get compression column".to_string()))?;
+
+        // Parse ID
+        let id = Uuid::parse_str(id_array.value(row))
+            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {}", e)))?;
+
+        // Get content
+        let content = content_array.value(row).to_string();
+
+        // Get embedding
+        let embedding_list = embedding_array.value(row);
+        let embedding_values = embedding_list
+            .as_any()
+            .downcast_ref::<Float32Array>()
+            .ok_or_else(|| NovaError::Storage("Failed to get embedding values".to_string()))?;
+        let embedding: Vec<f32> = (0..embedding_values.len())
+            .map(|i| embedding_values.value(i))
+            .collect();
+
+        // Parse memory type
+        let memory_type = match memory_type_array.value(row) {
+            "Episodic" => MemoryType::Episodic,
+            "Semantic" => MemoryType::Semantic,
+            "Procedural" => MemoryType::Procedural,
+            other => return Err(NovaError::Storage(format!("Unknown memory type: {}", other))),
+        };
+
+        // Get weight
+        let weight = weight_array.value(row);
+
+        // Parse timestamps
+        let created_at = Utc
+            .timestamp_micros(created_at_array.value(row))
+            .single()
+            .ok_or_else(|| NovaError::Storage("Failed to parse created_at timestamp".to_string()))?;
+        
+        let last_accessed = Utc
+            .timestamp_micros(last_accessed_array.value(row))
+            .single()
+            .ok_or_else(|| NovaError::Storage("Failed to parse last_accessed timestamp".to_string()))?;
+
+        // Get access count
+        let access_count = access_count_array.value(row) as u32;
+
+        // Get optional conversation_id
+        let conversation_id = if conversation_id_array.is_null(row) {
+            None
+        } else {
+            let value = conversation_id_array.value(row);
+            if value.is_empty() {
+                None
+            } else {
+                Some(value.to_string())
+            }
+        };
+
+        // Parse source
+        let source = match source_array.value(row) {
+            "Conversation" => MemorySource::Conversation,
+            "File" => MemorySource::File,
+            "Web" => MemorySource::Web,
+            "Manual" => MemorySource::Manual,
+            other => return Err(NovaError::Storage(format!("Unknown memory source: {}", other))),
+        };
+
+        // Parse tier
+        let tier = match tier_array.value(row) {
+            "Hot" => StorageTier::Hot,
+            "Warm" => StorageTier::Warm,
+            "Cold" => StorageTier::Cold,
+            other => return Err(NovaError::Storage(format!("Unknown storage tier: {}", other))),
+        };
+
+        // Parse compression
+        let compression = match compression_array.value(row) {
+            "Full" => CompressionLevel::Full,
+            "Summary" => CompressionLevel::Summary,
+            "Keywords" => CompressionLevel::Keywords,
+            "Hash" => CompressionLevel::Hash,
+            other => return Err(NovaError::Storage(format!("Unknown compression level: {}", other))),
+        };
+
+        Ok(Memory {
+            id,
+            content,
+            embedding,
+            memory_type,
+            weight,
+            created_at,
+            last_accessed,
+            access_count,
+            conversation_id,
+            entities: Vec::new(), // Entities not stored in Lance schema yet
+            source,
+            tier,
+            compression,
+        })
+    }
+
+    /// Insert a single memory into the store
+    pub async fn insert(&self, memory: &Memory) -> Result<()> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let schema = Self::memories_schema();
+        let batch = Self::memory_to_batch(memory, schema.clone())?;
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+
+        table
+            .add(Box::new(batches))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to insert memory: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Insert multiple memories in batch
+    pub async fn insert_batch(&self, memories: &[Memory]) -> Result<()> {
+        if memories.is_empty() {
+            return Ok(());
+        }
+
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let schema = Self::memories_schema();
+        let batch = Self::memories_to_batch(memories, schema.clone())?;
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+
+        table
+            .add(Box::new(batches))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to insert memories: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get a memory by ID
+    pub async fn get(&self, id: Uuid) -> Result<Option<Memory>> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let stream = table
+            .query()
+            .only_if(format!("id = '{}'", id))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to query memory: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {}", e)))?;
+
+        if batches.is_empty() {
+            return Ok(None);
+        }
+
+        let batch = &batches[0];
+        if batch.num_rows() == 0 {
+            return Ok(None);
+        }
+
+        let memory = Self::batch_to_memory(batch, 0)?;
+        Ok(Some(memory))
+    }
+
+    /// Delete a memory by ID
+    /// Returns true if a memory was deleted, false if not found
+    pub async fn delete(&self, id: Uuid) -> Result<bool> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        // First check if the memory exists
+        let exists = self.get(id).await?.is_some();
+
+        if exists {
+            table
+                .delete(&format!("id = '{}'", id))
+                .await
+                .map_err(|e| NovaError::Storage(format!("Failed to delete memory: {}", e)))?;
+        }
+
+        Ok(exists)
+    }
+
+    /// Update access stats (increment count, update timestamp)
+    pub async fn update_access(&self, id: Uuid) -> Result<()> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let now = Utc::now().timestamp_micros();
+
+        table
+            .update()
+            .only_if(format!("id = '{}'", id))
+            .column("access_count", "access_count + 1")
+            .column("last_accessed", format!("{}", now))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to update access: {}", e)))?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -241,6 +634,158 @@ mod tests {
                 assert_eq!(*size, EMBEDDING_DIMENSIONS);
             }
             _ => panic!("Expected FixedSizeList type for embedding field"),
+        }
+    }
+
+    mod crud {
+        use super::*;
+
+        fn create_test_memory(content: &str) -> Memory {
+            Memory::new(
+                content.to_string(),
+                vec![0.1; 384],
+                MemoryType::Semantic,
+                MemorySource::Manual,
+            )
+        }
+
+        #[tokio::test]
+        async fn test_insert_and_get() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let memory = create_test_memory("Test memory content");
+            let id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            let retrieved = store.get(id).await.unwrap();
+            assert!(retrieved.is_some());
+
+            let retrieved = retrieved.unwrap();
+            assert_eq!(retrieved.id, memory.id);
+            assert_eq!(retrieved.content, memory.content);
+            assert_eq!(retrieved.embedding.len(), 384);
+            assert_eq!(retrieved.memory_type, memory.memory_type);
+            assert_eq!(retrieved.source, memory.source);
+        }
+
+        #[tokio::test]
+        async fn test_insert_batch() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let memories: Vec<Memory> = (0..3)
+                .map(|i| create_test_memory(&format!("Memory {}", i)))
+                .collect();
+            
+            let ids: Vec<Uuid> = memories.iter().map(|m| m.id).collect();
+
+            store.insert_batch(&memories).await.unwrap();
+
+            for (i, id) in ids.iter().enumerate() {
+                let retrieved = store.get(*id).await.unwrap();
+                assert!(retrieved.is_some());
+                assert_eq!(retrieved.unwrap().content, format!("Memory {}", i));
+            }
+        }
+
+        #[tokio::test]
+        async fn test_get_nonexistent_returns_none() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let nonexistent_id = Uuid::new_v4();
+            let result = store.get(nonexistent_id).await.unwrap();
+            assert!(result.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_delete() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let memory = create_test_memory("To be deleted");
+            let id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+            
+            assert!(store.get(id).await.unwrap().is_some());
+
+            let deleted = store.delete(id).await.unwrap();
+            assert!(deleted);
+
+            assert!(store.get(id).await.unwrap().is_none());
+        }
+
+        #[tokio::test]
+        async fn test_delete_nonexistent_returns_false() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let nonexistent_id = Uuid::new_v4();
+            let deleted = store.delete(nonexistent_id).await.unwrap();
+            assert!(!deleted);
+        }
+
+        #[tokio::test]
+        async fn test_update_access() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let memory = create_test_memory("Access test");
+            let id = memory.id;
+            let original_access_count = memory.access_count;
+            let original_last_accessed = memory.last_accessed;
+
+            store.insert(&memory).await.unwrap();
+
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+            store.update_access(id).await.unwrap();
+
+            let updated = store.get(id).await.unwrap().unwrap();
+            assert_eq!(updated.access_count, original_access_count + 1);
+            assert!(updated.last_accessed > original_last_accessed);
+        }
+
+        #[tokio::test]
+        async fn test_roundtrip_preserves_all_fields() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let mut memory = Memory::new(
+                "Complete memory test".to_string(),
+                vec![0.5; 384],
+                MemoryType::Episodic,
+                MemorySource::Conversation,
+            );
+            memory.weight = 0.75;
+            memory.conversation_id = Some("conv-123".to_string());
+            memory.tier = StorageTier::Warm;
+            memory.compression = CompressionLevel::Summary;
+
+            let id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            let retrieved = store.get(id).await.unwrap().unwrap();
+
+            assert_eq!(retrieved.id, memory.id);
+            assert_eq!(retrieved.content, memory.content);
+            assert_eq!(retrieved.memory_type, memory.memory_type);
+            assert_eq!(retrieved.weight, memory.weight);
+            assert_eq!(retrieved.conversation_id, memory.conversation_id);
+            assert_eq!(retrieved.source, memory.source);
+            assert_eq!(retrieved.tier, memory.tier);
+            assert_eq!(retrieved.compression, memory.compression);
         }
     }
 }
