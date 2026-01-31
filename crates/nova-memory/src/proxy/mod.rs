@@ -1,7 +1,9 @@
+mod capture;
 mod injection;
 mod server;
 mod streaming;
 
+pub use capture::ResponseCapture;
 pub use injection::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
 };
