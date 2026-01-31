@@ -37,6 +37,20 @@ chrono = { version = "0.4", features = ["serde"] }
 # Directory utilities
 dirs = "5"
 
+# Embeddings
+fastembed = "5.8"
+
+# Vector database
+lancedb = "0.23"
+arrow-array = "56"
+arrow-schema = "56"
+
+# Async utilities
+futures = "0.3"
+
+# Temporary directories for testing
+tempfile = "3"
+
 [profile.release]
 opt-level = 3
 lto = true
