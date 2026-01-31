@@ -640,6 +640,75 @@ impl LanceStore {
 
         Ok(memories)
     }
+
+    /// List all memories in a specific storage tier
+    pub async fn list_by_tier(&self, tier: StorageTier) -> Result<Vec<Memory>> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let tier_str = match tier {
+            StorageTier::Hot => "Hot",
+            StorageTier::Warm => "Warm",
+            StorageTier::Cold => "Cold",
+        };
+
+        let stream = table
+            .query()
+            .only_if(format!("tier = '{}'", tier_str))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to query by tier: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect tier results: {}", e)))?;
+
+        let mut memories = Vec::new();
+        for batch in &batches {
+            for row in 0..batch.num_rows() {
+                let memory = Self::batch_to_memory(batch, row)?;
+                memories.push(memory);
+            }
+        }
+
+        Ok(memories)
+    }
+
+    /// Count memories in a specific storage tier
+    pub async fn count_by_tier(&self, tier: StorageTier) -> Result<usize> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let tier_str = match tier {
+            StorageTier::Hot => "Hot",
+            StorageTier::Warm => "Warm",
+            StorageTier::Cold => "Cold",
+        };
+
+        let count = table
+            .count_rows(Some(format!("tier = '{}'", tier_str)))
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to count by tier: {}", e)))?;
+
+        Ok(count)
+    }
+
+    /// Get the total number of memories across all tiers
+    pub async fn total_count(&self) -> Result<usize> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let count = table
+            .count_rows(None)
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to count memories: {}", e)))?;
+
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
