@@ -180,7 +180,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ### Phase 0: Project Setup & Skeleton
 
-- [ ] 0.1. Initialize Cargo Workspace
+- [x] 0.1. Initialize Cargo Workspace
 
   **What to do**:
   - Run `cargo init --name nova-memory`
@@ -227,7 +227,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 0.2. Configure Core Dependencies
+- [x] 0.2. Configure Core Dependencies
 
   **What to do**:
   - Add tokio (async runtime)
@@ -273,7 +273,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 0.3. Create Module Structure
+- [x] 0.3. Create Module Structure
 
   **What to do**:
   - Create src/lib.rs for shared library code
@@ -324,7 +324,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 0.4. Create Configuration Schema
+- [x] 0.4. Create Configuration Schema
 
   **What to do**:
   - Define `Config` struct in `src/config/mod.rs`
@@ -389,7 +389,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ### Phase 1: Core Storage + Embeddings
 
-- [ ] 1.1. Define Memory Schema
+- [x] 1.1. Define Memory Schema
 
   **What to do**:
   - Create `Memory` struct in `src/memory/types.rs`:
@@ -473,7 +473,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.2. Define Tombstone Schema
+- [x] 1.2. Define Tombstone Schema
 
   **What to do**:
   - Create `Tombstone` struct in `src/memory/tombstone.rs`:
@@ -528,7 +528,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.3. Integrate LanceDB
+- [x] 1.3. Integrate LanceDB
 
   **What to do**:
   - Add `lancedb = "0.23"` to Cargo.toml
@@ -575,7 +575,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.4. Implement Memory CRUD Operations
+- [x] 1.4. Implement Memory CRUD Operations
 
   **What to do**:
   - Extend `LanceStore` with CRUD methods:
@@ -620,7 +620,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.5. Integrate e5-small Embeddings
+- [x] 1.5. Integrate e5-small Embeddings
 
   **What to do**:
   - Add `fastembed = "5.8"` to Cargo.toml
@@ -665,7 +665,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.6. Implement Vector Search
+- [x] 1.6. Implement Vector Search
 
   **What to do**:
   - Extend `LanceStore` with search methods:
@@ -715,7 +715,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 1.7. Add Phase 1 Tests
+- [x] 1.7. Add Phase 1 Tests
 
   **What to do**:
   - Create `tests/storage_tests.rs`:
@@ -760,7 +760,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ### Phase 2: Router + Ingestion Pipeline
 
-- [ ] 2.1. Integrate DistilBERT-NER
+- [x] 2.1. Integrate DistilBERT-NER
 
   **What to do**:
   - Add `candle-core`, `candle-transformers`, `candle-nn` to Cargo.toml
@@ -813,7 +813,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 2.2. Implement Router Output
+- [x] 2.2. Implement Router Output
 
   **What to do**:
   - Create `src/router/mod.rs` with `MemoryRouter` struct:
@@ -865,7 +865,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 2.3. Implement Memory Ingestion
+- [x] 2.3. Implement Memory Ingestion
 
   **What to do**:
   - Create `src/memory/ingestion.rs`:
@@ -917,7 +917,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 2.4. Implement Weight Calculation
+- [x] 2.4. Implement Weight Calculation
 
   **What to do**:
   - Create `src/memory/weight.rs`:
@@ -972,7 +972,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 2.5. Implement Memory Retrieval with Reranking
+- [x] 2.5. Implement Memory Retrieval with Reranking
 
   **What to do**:
   - Create `src/memory/retrieval.rs`:
@@ -1024,7 +1024,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 2.6. Add Phase 2 Tests
+- [x] 2.6. Add Phase 2 Tests
 
   **What to do**:
   - Create `tests/router_tests.rs`:
@@ -1069,7 +1069,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ### Phase 3: Daemon Proxy
 
-- [ ] 3.1. Create HTTP Server Skeleton
+- [x] 3.1. Create HTTP Server Skeleton
 
   **What to do**:
   - Add `axum`, `hyper`, `tower` to Cargo.toml
@@ -1118,7 +1118,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 3.2. Implement SSE Streaming Passthrough
+- [x] 3.2. Implement SSE Streaming Passthrough
 
   **What to do**:
   - Create `src/proxy/streaming.rs`:
@@ -1169,7 +1169,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 3.3. Implement Request Interception + Memory Injection
+- [x] 3.3. Implement Request Interception + Memory Injection
 
   **What to do**:
   - Create `src/proxy/injection.rs`:
@@ -1233,7 +1233,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 3.4. Implement Response Capture + Ingestion
+- [x] 3.4. Implement Response Capture + Ingestion
 
   **What to do**:
   - Create `src/proxy/capture.rs`:
@@ -1286,7 +1286,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 3.5. Implement Fail-Open Error Handling
+- [x] 3.5. Implement Fail-Open Error Handling
 
   **What to do**:
   - Create `src/proxy/error.rs`:
@@ -1339,7 +1339,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 3.6. Add Phase 3 Tests
+- [x] 3.6. Add Phase 3 Tests
 
   **What to do**:
   - Create `tests/proxy_tests.rs`:
@@ -1384,7 +1384,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ### Phase 4: Capacity Management
 
-- [ ] 4.1. Implement Storage Tier Migration
+- [x] 4.1. Implement Storage Tier Migration
 
   **What to do**:
   - Create `src/storage/tiers.rs`:
@@ -1430,7 +1430,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.2. Implement Compaction
+- [x] 4.2. Implement Compaction
 
   **What to do**:
   - Create `src/storage/compaction.rs`:
@@ -1477,7 +1477,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.3. Implement Eviction
+- [x] 4.3. Implement Eviction
 
   **What to do**:
   - Create `src/storage/eviction.rs`:
@@ -1526,7 +1526,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.4. Implement Tombstone Creation
+- [x] 4.4. Implement Tombstone Creation
 
   **What to do**:
   - Extend eviction to create tombstones:
@@ -1572,7 +1572,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.5. Implement CLI Management Commands
+- [x] 4.5. Implement CLI Management Commands
 
   **What to do**:
   - Create `src/cli/mod.rs` with commands:
