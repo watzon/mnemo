@@ -30,3 +30,11 @@ Cargo.lock
 # Environment variables
 .env
 .env.local
+
+# ML model caches
+.fastembed_cache/
+**/.fastembed_cache/
+
+# Nova Memory data directories
+.nova-memory/
+data/
