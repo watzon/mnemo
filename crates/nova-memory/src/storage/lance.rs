@@ -709,6 +709,38 @@ impl LanceStore {
 
         Ok(count)
     }
+
+    /// Update content and compression level of a memory
+    pub async fn update_compression(
+        &self,
+        id: Uuid,
+        content: &str,
+        compression: CompressionLevel,
+    ) -> Result<()> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let compression_str = match compression {
+            CompressionLevel::Full => "Full",
+            CompressionLevel::Summary => "Summary",
+            CompressionLevel::Keywords => "Keywords",
+            CompressionLevel::Hash => "Hash",
+        };
+
+        let escaped_content = content.replace('\'', "''");
+
+        table
+            .update()
+            .only_if(format!("id = '{}'", id))
+            .column("content", format!("'{}'", escaped_content))
+            .column("compression", format!("'{}'", compression_str))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to update compression: {}", e)))?;
+
+        Ok(())
+    }
 }
 
 #[cfg(test)]
