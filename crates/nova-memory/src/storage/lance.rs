@@ -19,6 +19,7 @@ use crate::error::{NovaError, Result};
 use crate::memory::types::{
     CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
 };
+use crate::storage::filter::MemoryFilter;
 
 const EMBEDDING_DIMENSIONS: i32 = 384;
 const MEMORIES_TABLE: &str = "memories";
@@ -569,6 +570,53 @@ impl LanceStore {
 
         Ok(())
     }
+
+    /// Search for similar memories using vector similarity (ANN search)
+    pub async fn search(&self, embedding: &[f32], limit: usize) -> Result<Vec<Memory>> {
+        self.search_filtered(embedding, &MemoryFilter::default(), limit).await
+    }
+
+    /// Search for similar memories with filter criteria
+    pub async fn search_filtered(
+        &self,
+        embedding: &[f32],
+        filter: &MemoryFilter,
+        limit: usize,
+    ) -> Result<Vec<Memory>> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let mut query = table
+            .query()
+            .nearest_to(embedding)
+            .map_err(|e| NovaError::Storage(format!("Failed to create vector query: {}", e)))?
+            .limit(limit);
+
+        if let Some(sql_filter) = filter.to_sql_clause() {
+            query = query.only_if(sql_filter);
+        }
+
+        let stream = query
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to execute search: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {}", e)))?;
+
+        let mut memories = Vec::new();
+        for batch in &batches {
+            for row in 0..batch.num_rows() {
+                let memory = Self::batch_to_memory(batch, row)?;
+                memories.push(memory);
+            }
+        }
+
+        Ok(memories)
+    }
 }
 
 #[cfg(test)]
@@ -786,6 +834,202 @@ mod tests {
             assert_eq!(retrieved.source, memory.source);
             assert_eq!(retrieved.tier, memory.tier);
             assert_eq!(retrieved.compression, memory.compression);
+        }
+    }
+
+    mod search {
+        use super::*;
+
+        fn create_memory_with_embedding(content: &str, embedding: Vec<f32>, memory_type: MemoryType) -> Memory {
+            Memory::new(
+                content.to_string(),
+                embedding,
+                memory_type,
+                MemorySource::Manual,
+            )
+        }
+
+        fn similar_embedding(base: &[f32], variation: f32) -> Vec<f32> {
+            base.iter().map(|v| v + variation).collect()
+        }
+
+        #[tokio::test]
+        async fn test_search_returns_similar_memories() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            
+            let memories = vec![
+                create_memory_with_embedding("Similar 1", similar_embedding(&base_embedding, 0.01), MemoryType::Semantic),
+                create_memory_with_embedding("Similar 2", similar_embedding(&base_embedding, 0.02), MemoryType::Semantic),
+                create_memory_with_embedding("Different", vec![0.9; 384], MemoryType::Semantic),
+            ];
+            store.insert_batch(&memories).await.unwrap();
+
+            let results = store.search(&base_embedding, 10).await.unwrap();
+            
+            assert_eq!(results.len(), 3);
+            assert!(results[0].content.starts_with("Similar"));
+        }
+
+        #[tokio::test]
+        async fn test_search_respects_limit() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let memories: Vec<Memory> = (0..5)
+                .map(|i| create_memory_with_embedding(
+                    &format!("Memory {}", i),
+                    similar_embedding(&base_embedding, i as f32 * 0.01),
+                    MemoryType::Semantic,
+                ))
+                .collect();
+            store.insert_batch(&memories).await.unwrap();
+
+            let results = store.search(&base_embedding, 2).await.unwrap();
+            
+            assert_eq!(results.len(), 2);
+        }
+
+        #[tokio::test]
+        async fn test_search_filtered_by_memory_type() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let memories = vec![
+                create_memory_with_embedding("Semantic 1", base_embedding.clone(), MemoryType::Semantic),
+                create_memory_with_embedding("Episodic 1", base_embedding.clone(), MemoryType::Episodic),
+                create_memory_with_embedding("Semantic 2", base_embedding.clone(), MemoryType::Semantic),
+            ];
+            store.insert_batch(&memories).await.unwrap();
+
+            let filter = MemoryFilter::new().with_memory_types(vec![MemoryType::Semantic]);
+            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
+            
+            assert_eq!(results.len(), 2);
+            for memory in &results {
+                assert_eq!(memory.memory_type, MemoryType::Semantic);
+            }
+        }
+
+        #[tokio::test]
+        async fn test_search_filtered_by_min_weight() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            
+            let mut low_weight = create_memory_with_embedding("Low weight", base_embedding.clone(), MemoryType::Semantic);
+            low_weight.weight = 0.3;
+            
+            let mut high_weight = create_memory_with_embedding("High weight", base_embedding.clone(), MemoryType::Semantic);
+            high_weight.weight = 0.8;
+            
+            store.insert(&low_weight).await.unwrap();
+            store.insert(&high_weight).await.unwrap();
+
+            let filter = MemoryFilter::new().with_min_weight(0.5);
+            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
+            
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].content, "High weight");
+        }
+
+        #[tokio::test]
+        async fn test_search_filtered_by_conversation_id() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            
+            let mut conv_a = create_memory_with_embedding("Conv A", base_embedding.clone(), MemoryType::Episodic);
+            conv_a.conversation_id = Some("conv-a".to_string());
+            
+            let mut conv_b = create_memory_with_embedding("Conv B", base_embedding.clone(), MemoryType::Episodic);
+            conv_b.conversation_id = Some("conv-b".to_string());
+            
+            store.insert(&conv_a).await.unwrap();
+            store.insert(&conv_b).await.unwrap();
+
+            let filter = MemoryFilter::new().with_conversation_id("conv-a".to_string());
+            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
+            
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].conversation_id, Some("conv-a".to_string()));
+        }
+
+        #[tokio::test]
+        async fn test_search_with_combined_filters() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            
+            let mut m1 = create_memory_with_embedding("Match", base_embedding.clone(), MemoryType::Semantic);
+            m1.weight = 0.8;
+            m1.conversation_id = Some("conv-1".to_string());
+            
+            let mut m2 = create_memory_with_embedding("Wrong type", base_embedding.clone(), MemoryType::Episodic);
+            m2.weight = 0.8;
+            m2.conversation_id = Some("conv-1".to_string());
+            
+            let mut m3 = create_memory_with_embedding("Low weight", base_embedding.clone(), MemoryType::Semantic);
+            m3.weight = 0.2;
+            m3.conversation_id = Some("conv-1".to_string());
+            
+            store.insert_batch(&[m1, m2, m3]).await.unwrap();
+
+            let filter = MemoryFilter::new()
+                .with_memory_types(vec![MemoryType::Semantic])
+                .with_min_weight(0.5);
+            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
+            
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].content, "Match");
+        }
+
+        #[tokio::test]
+        async fn test_search_empty_results() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let results = store.search(&base_embedding, 10).await.unwrap();
+            
+            assert!(results.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_search_latency_reasonable() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let memories: Vec<Memory> = (0..100)
+                .map(|i| create_memory_with_embedding(
+                    &format!("Memory {}", i),
+                    similar_embedding(&base_embedding, (i as f32) * 0.001),
+                    MemoryType::Semantic,
+                ))
+                .collect();
+            store.insert_batch(&memories).await.unwrap();
+
+            let start = std::time::Instant::now();
+            let _results = store.search(&base_embedding, 10).await.unwrap();
+            let elapsed = start.elapsed();
+
+            assert!(elapsed.as_millis() < 1000, "Search took too long: {:?}", elapsed);
         }
     }
 }
