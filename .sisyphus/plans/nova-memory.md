@@ -1626,7 +1626,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.6. Add Phase 4 Tests
+- [x] 4.6. Add Phase 4 Tests
 
   **What to do**:
   - Create `tests/capacity_tests.rs`:

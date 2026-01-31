@@ -1,15 +1,10 @@
-mod commands;
-mod error;
-mod output;
-
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use nova_cli::commands::{CompactCommand, ConfigCommand, MemoryCommand, StatsCommand};
+use nova_cli::error::CliResult;
+use nova_cli::output::OutputFormat;
 use nova_memory::storage::LanceStore;
-
-use commands::{CompactCommand, ConfigCommand, MemoryCommand, StatsCommand};
-use error::CliResult;
-use output::OutputFormat;
 
 #[derive(Parser)]
 #[command(name = "nova-cli")]
