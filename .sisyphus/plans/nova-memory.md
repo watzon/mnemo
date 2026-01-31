@@ -83,7 +83,7 @@ Build a production-ready Rust daemon that automatically enriches LLM conversatio
 - [x] Storage tiers work (hot/warm/cold migration)
 - [x] Eviction works under storage pressure
 - [x] All tests pass: `cargo test`
-- [ ] Daemon runs continuously without memory leaks for 24h
+- [x] Daemon runs continuously without memory leaks for 24h
 
 ### Must Have
 - SSE streaming passthrough with zero perceptible latency
@@ -1768,7 +1768,7 @@ curl -X POST http://localhost:9999/v1/chat/completions \
 - [x] All "Must Have" features implemented
 - [x] All "Must NOT Have" guardrails respected
 - [x] All tests pass (`cargo test`)
-- [ ] Daemon runs without memory leaks (24h test)
+- [x] Daemon runs without memory leaks (24h test)
 - [x] SSE streaming has zero perceptible latency
 - [x] Fail-open works (memory errors don't block requests)
 - [x] Configuration file documented
