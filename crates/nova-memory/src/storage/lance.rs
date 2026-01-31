@@ -571,6 +571,29 @@ impl LanceStore {
         Ok(())
     }
 
+    /// Update the storage tier of a memory
+    pub async fn update_tier(&self, id: Uuid, tier: StorageTier) -> Result<()> {
+        let table = self.memories_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Memories table not initialized".to_string())
+        })?;
+
+        let tier_str = match tier {
+            StorageTier::Hot => "Hot",
+            StorageTier::Warm => "Warm",
+            StorageTier::Cold => "Cold",
+        };
+
+        table
+            .update()
+            .only_if(format!("id = '{}'", id))
+            .column("tier", format!("'{}'", tier_str))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to update tier: {}", e)))?;
+
+        Ok(())
+    }
+
     /// Search for similar memories using vector similarity (ANN search)
     pub async fn search(&self, embedding: &[f32], limit: usize) -> Result<Vec<Memory>> {
         self.search_filtered(embedding, &MemoryFilter::default(), limit).await
