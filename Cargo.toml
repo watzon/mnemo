@@ -51,6 +51,13 @@ futures = "0.3"
 # Temporary directories for testing
 tempfile = "3"
 
+# Machine learning (Candle)
+candle-core = "0.9"
+candle-nn = "0.9"
+candle-transformers = "0.9"
+hf-hub = "0.4"
+tokenizers = "0.22"
+
 [profile.release]
 opt-level = 3
 lto = true

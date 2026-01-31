@@ -1,7 +1,5 @@
-//! Memory router using DistilBERT for classification
-//!
-//! Routes memories to appropriate storage tiers based on
-//! semantic classification using DistilBERT models.
+pub mod ner;
 
-/// Router module placeholder
+pub use ner::{Entity, EntityLabel, NerModel};
+
 pub struct Router;
