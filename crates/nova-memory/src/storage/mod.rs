@@ -1,7 +1,3 @@
-//! Storage layer with LanceDB and tier management
-//!
-//! Manages persistent storage using LanceDB for vector search
-//! and implements tiered memory management (working, short-term, long-term).
+pub mod lance;
 
-/// Storage module placeholder
-pub struct Storage;
+pub use lance::LanceStore;
