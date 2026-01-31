@@ -61,6 +61,33 @@ impl Tombstone {
     }
 }
 
+impl Tombstone {
+    /// Format the tombstone as XML for memory injection.
+    /// Returns a string in the format:
+    /// ```xml
+    /// <nova-tombstone timestamp="2024-01-15" topics="project-x, alice">
+    ///   I previously knew details about this topic but no longer have them.
+    /// </nova-tombstone>
+    /// ```
+    pub fn to_xml(&self) -> String {
+        let timestamp = self.approximate_date.format("%Y-%m-%d").to_string();
+        let topics_str = if self.topics.is_empty() {
+            "unknown".to_string()
+        } else {
+            self.topics.join(", ")
+        };
+
+        let content = format!("{}", self);
+
+        format!(
+            r#"<nova-tombstone timestamp="{}" topics="{}">
+  {}
+</nova-tombstone>"#,
+            timestamp, topics_str, content
+        )
+    }
+}
+
 impl fmt::Display for Tombstone {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Format topics list
@@ -262,5 +289,67 @@ mod tests {
 
         let display_str = format!("{}", tombstone);
         assert!(display_str.contains("June 2024"));
+    }
+
+    #[test]
+    fn test_tombstone_to_xml_format() {
+        use chrono::TimeZone;
+        let specific_date = Utc.with_ymd_and_hms(2024, 1, 15, 10, 30, 0).unwrap();
+
+        let tombstone = Tombstone::new(
+            Uuid::new_v4(),
+            vec!["project-x".to_string(), "alice".to_string()],
+            vec!["bob".to_string()],
+            specific_date,
+            EvictionReason::StoragePressure,
+        );
+
+        let xml = tombstone.to_xml();
+
+        // Check XML structure
+        assert!(xml.starts_with("<nova-tombstone"));
+        assert!(xml.contains("timestamp=\"2024-01-15\""));
+        assert!(xml.contains("topics=\"project-x, alice\""));
+        assert!(xml.contains("</nova-tombstone>"));
+
+        // Check that display content is included
+        assert!(xml.contains("I previously knew about"));
+        assert!(xml.contains("storage pressure"));
+    }
+
+    #[test]
+    fn test_tombstone_to_xml_empty_topics() {
+        let tombstone = Tombstone::new(
+            Uuid::new_v4(),
+            vec![],
+            vec!["participant".to_string()],
+            Utc::now(),
+            EvictionReason::LowWeight,
+        );
+
+        let xml = tombstone.to_xml();
+
+        // Should use "unknown" for empty topics
+        assert!(xml.contains("topics=\"unknown\""));
+    }
+
+    #[test]
+    fn test_tombstone_to_xml_single_topic() {
+        use chrono::TimeZone;
+        let specific_date = Utc.with_ymd_and_hms(2024, 3, 20, 0, 0, 0).unwrap();
+
+        let tombstone = Tombstone::new(
+            Uuid::new_v4(),
+            vec!["machine-learning".to_string()],
+            vec![],
+            specific_date,
+            EvictionReason::ManualDeletion,
+        );
+
+        let xml = tombstone.to_xml();
+
+        assert!(xml.contains("timestamp=\"2024-03-20\""));
+        assert!(xml.contains("topics=\"machine-learning\""));
+        assert!(xml.contains("manual deletion"));
     }
 }

@@ -7,6 +7,7 @@ use chrono::{Duration, Utc};
 use uuid::Uuid;
 
 use crate::error::Result;
+use crate::memory::tombstone::{EvictionReason, Tombstone};
 use crate::memory::types::{Memory, StorageTier};
 use crate::memory::weight::{calculate_effective_weight, WeightConfig};
 use crate::storage::LanceStore;
@@ -183,7 +184,7 @@ impl<'a> Evictor<'a> {
     /// 2. Get all memories in the tier
     /// 3. Filter out protected memories
     /// 4. Sort by eviction priority (lowest first)
-    /// 5. Delete lowest priority memories until below eviction threshold
+    /// 5. Create tombstones and delete lowest priority memories until below eviction threshold
     pub async fn evict_if_needed(&self, tier: StorageTier) -> Result<Vec<Uuid>> {
         let status = self.check_capacity(tier).await?;
 
@@ -216,19 +217,30 @@ impl<'a> Evictor<'a> {
         let memories = self.store.list_by_tier(tier).await?;
 
         // Calculate priority and filter protected
-        let mut candidates: Vec<(Uuid, f32)> = memories
-            .iter()
+        let mut candidates: Vec<(Memory, f32)> = memories
+            .into_iter()
             .filter(|m| !self.is_protected(m))
-            .map(|m| (m.id, self.eviction_priority(m)))
+            .map(|m| {
+                let priority = self.eviction_priority(&m);
+                (m, priority)
+            })
             .collect();
 
         // Sort by priority ascending (lowest priority = evict first)
         candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
+        // Determine eviction reason based on status
+        let reason = if status == CapacityStatus::AggressiveEvictionNeeded {
+            EvictionReason::StoragePressure
+        } else {
+            EvictionReason::LowWeight
+        };
+
         let mut evicted = Vec::new();
-        for (id, _priority) in candidates.into_iter().take(to_evict_count) {
-            if self.store.delete(id).await? {
-                evicted.push(id);
+        for (memory, _priority) in candidates.into_iter().take(to_evict_count) {
+            // Create tombstone and then delete
+            if self.evict_with_tombstone(&memory, reason.clone()).await? {
+                evicted.push(memory.id);
             }
         }
 
@@ -256,6 +268,44 @@ impl<'a> Evictor<'a> {
         candidates.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal));
 
         Ok(candidates.into_iter().take(limit).collect())
+    }
+
+    /// Create a tombstone for a memory before eviction.
+    /// Extracts topics from entities and creates a tombstone record.
+    async fn create_tombstone(&self, memory: &Memory, reason: EvictionReason) -> Result<Tombstone> {
+        // Extract topics from entities (all entities are treated as topics for now)
+        let topics = memory.entities.clone();
+
+        // Participants are not currently stored separately in Memory,
+        // so we leave it empty. In the future, if Memory stores labeled entities,
+        // we can filter for Person entities here.
+        let participants = Vec::new();
+
+        let tombstone = Tombstone {
+            original_id: memory.id,
+            evicted_at: Utc::now(),
+            topics,
+            participants,
+            approximate_date: memory.created_at,
+            reason,
+        };
+
+        self.store.insert_tombstone(&tombstone).await?;
+        Ok(tombstone)
+    }
+
+    /// Create a tombstone and evict a memory.
+    /// This is the preferred method for eviction as it preserves metadata.
+    async fn evict_with_tombstone(
+        &self,
+        memory: &Memory,
+        reason: EvictionReason,
+    ) -> Result<bool> {
+        // Create tombstone first (before deleting)
+        self.create_tombstone(memory, reason).await?;
+
+        // Then delete the memory
+        self.store.delete(memory.id).await
     }
 }
 
@@ -589,6 +639,7 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
             store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
 
             let config = EvictionConfig {
                 max_memories_per_tier: 10,
@@ -630,6 +681,7 @@ mod tests {
             let temp_dir = tempfile::tempdir().unwrap();
             let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
             store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
 
             let config = EvictionConfig {
                 max_memories_per_tier: 10,
@@ -730,6 +782,267 @@ mod tests {
                     "Candidates should be sorted by priority ascending"
                 );
             }
+        }
+    }
+
+    mod tombstone_creation {
+        use super::*;
+        use crate::memory::tombstone::EvictionReason;
+
+        fn create_memory_with_entities(
+            content: &str,
+            weight: f32,
+            tier: StorageTier,
+            hours_ago: i64,
+            entities: Vec<String>,
+        ) -> Memory {
+            let mut memory = create_memory_with_access(content, weight, tier, hours_ago, 0);
+            memory.entities = entities;
+            memory
+        }
+
+        #[tokio::test]
+        async fn test_eviction_creates_tombstone() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let config = EvictionConfig {
+                max_memories_per_tier: 10,
+                recent_access_hours: 1,
+                min_weight_protected: 0.9,
+                ..EvictionConfig::default()
+            };
+            let evictor = Evictor::with_config(&store, config);
+
+            // Insert 9 memories at 90% capacity with entities
+            let mut memories = Vec::new();
+            for i in 0..9 {
+                let mem = create_memory_with_entities(
+                    &format!("Evictable-{}", i),
+                    0.1 + (i as f32) * 0.05,
+                    StorageTier::Hot,
+                    48,
+                    vec![format!("topic-{}", i), "shared-topic".to_string()],
+                );
+                memories.push(mem);
+            }
+            store.insert_batch(&memories).await.unwrap();
+
+            // Verify no tombstones exist before eviction
+            let tombstones_before = store.list_all_tombstones().await.unwrap();
+            assert!(tombstones_before.is_empty());
+
+            // Trigger eviction
+            let evicted = evictor.evict_if_needed(StorageTier::Hot).await.unwrap();
+
+            // Verify memories were evicted
+            assert!(!evicted.is_empty(), "Should have evicted some memories");
+
+            // Verify tombstones were created
+            let tombstones_after = store.list_all_tombstones().await.unwrap();
+            assert_eq!(
+                tombstones_after.len(),
+                evicted.len(),
+                "Should have created a tombstone for each evicted memory"
+            );
+
+            // Verify tombstone content
+            for tombstone in &tombstones_after {
+                assert!(!tombstone.topics.is_empty(), "Tombstone should have topics");
+                assert!(
+                    tombstone.topics.contains(&"shared-topic".to_string()),
+                    "Tombstone should contain shared topic"
+                );
+                assert!(
+                    matches!(
+                        tombstone.reason,
+                        EvictionReason::StoragePressure | EvictionReason::LowWeight
+                    ),
+                    "Tombstone should have correct eviction reason"
+                );
+            }
+        }
+
+        #[tokio::test]
+        async fn test_tombstone_contains_correct_topics() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let config = EvictionConfig {
+                max_memories_per_tier: 10,
+                recent_access_hours: 1,
+                min_weight_protected: 0.9,
+                ..EvictionConfig::default()
+            };
+            let evictor = Evictor::with_config(&store, config);
+
+            // Create memory with specific entities
+            let mut memory = create_memory_with_entities(
+                "Test content",
+                0.1,
+                StorageTier::Hot,
+                48,
+                vec![
+                    "rust".to_string(),
+                    "programming".to_string(),
+                    "async".to_string(),
+                ],
+            );
+            memory.id = Uuid::new_v4();
+            let memory_id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            // Add more memories to trigger eviction
+            for i in 0..8 {
+                let mem = create_memory_with_access(
+                    &format!("Filler-{}", i),
+                    0.1 + (i as f32) * 0.01,
+                    StorageTier::Hot,
+                    48,
+                    0,
+                );
+                store.insert(&mem).await.unwrap();
+            }
+
+            // Trigger eviction
+            let evicted = evictor.evict_if_needed(StorageTier::Hot).await.unwrap();
+            assert!(!evicted.is_empty());
+
+            // Find the tombstone for our specific memory
+            let tombstone = store.get_tombstone(memory_id).await.unwrap();
+            assert!(tombstone.is_some(), "Should have created a tombstone for the memory");
+
+            let tombstone = tombstone.unwrap();
+            assert_eq!(tombstone.topics.len(), 3);
+            assert!(tombstone.topics.contains(&"rust".to_string()));
+            assert!(tombstone.topics.contains(&"programming".to_string()));
+            assert!(tombstone.topics.contains(&"async".to_string()));
+        }
+
+        #[tokio::test]
+        async fn test_tombstone_searchable_by_topic() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let config = EvictionConfig {
+                max_memories_per_tier: 10,
+                recent_access_hours: 1,
+                min_weight_protected: 0.9,
+                ..EvictionConfig::default()
+            };
+            let evictor = Evictor::with_config(&store, config);
+
+            // Create memories with different topics (low weights to ensure eviction)
+            let mut memory1 = create_memory_with_entities(
+                "Memory about machine learning",
+                0.05, // Very low weight to ensure eviction
+                StorageTier::Hot,
+                48,
+                vec!["machine-learning".to_string(), "python".to_string()],
+            );
+            memory1.id = Uuid::new_v4();
+
+            let mut memory2 = create_memory_with_entities(
+                "Memory about web development",
+                0.06, // Very low weight to ensure eviction
+                StorageTier::Hot,
+                48,
+                vec!["web".to_string(), "javascript".to_string()],
+            );
+            memory2.id = Uuid::new_v4();
+
+            store.insert(&memory1).await.unwrap();
+            store.insert(&memory2).await.unwrap();
+
+            // Add more memories to trigger aggressive eviction (need > 95% for multiple evictions)
+            for i in 0..8 {
+                let mem = create_memory_with_access(
+                    &format!("Filler-{}", i),
+                    0.5 + (i as f32) * 0.01, // Higher weights to avoid eviction
+                    StorageTier::Hot,
+                    48,
+                    0,
+                );
+                store.insert(&mem).await.unwrap();
+            }
+
+            // Trigger eviction - at 10/10 = 100% capacity, should evict aggressively
+            let evicted = evictor.evict_if_needed(StorageTier::Hot).await.unwrap();
+            assert!(
+                evicted.len() >= 2,
+                "Should evict at least 2 memories, evicted: {:?}",
+                evicted.len()
+            );
+
+            // Search tombstones by topic
+            let ml_tombstones = store.search_tombstones_by_topic("machine-learning").await.unwrap();
+            assert!(!ml_tombstones.is_empty(), "Should find tombstone by 'machine-learning' topic");
+
+            let python_tombstones = store.search_tombstones_by_topic("python").await.unwrap();
+            assert!(!python_tombstones.is_empty(), "Should find tombstone by 'python' topic");
+
+            let web_tombstones = store.search_tombstones_by_topic("web").await.unwrap();
+            assert!(!web_tombstones.is_empty(), "Should find tombstone by 'web' topic");
+
+            let nonexistent = store.search_tombstones_by_topic("nonexistent").await.unwrap();
+            assert!(nonexistent.is_empty(), "Should not find tombstones for nonexistent topic");
+        }
+
+        #[tokio::test]
+        async fn test_tombstone_has_approximate_date() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let config = EvictionConfig {
+                max_memories_per_tier: 10,
+                recent_access_hours: 1,
+                min_weight_protected: 0.9,
+                ..EvictionConfig::default()
+            };
+            let evictor = Evictor::with_config(&store, config);
+
+            // Create memory with specific creation date
+            let mut memory = create_memory_with_entities(
+                "Test content",
+                0.1,
+                StorageTier::Hot,
+                48,
+                vec!["test-topic".to_string()],
+            );
+            memory.id = Uuid::new_v4();
+            let created_at = memory.created_at;
+            let memory_id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            // Add more memories to trigger eviction
+            for i in 0..8 {
+                let mem = create_memory_with_access(
+                    &format!("Filler-{}", i),
+                    0.1 + (i as f32) * 0.01,
+                    StorageTier::Hot,
+                    48,
+                    0,
+                );
+                store.insert(&mem).await.unwrap();
+            }
+
+            // Trigger eviction
+            let evicted = evictor.evict_if_needed(StorageTier::Hot).await.unwrap();
+            assert!(!evicted.is_empty());
+
+            // Verify tombstone has correct approximate date
+            let tombstone = store.get_tombstone(memory_id).await.unwrap().unwrap();
+            assert_eq!(tombstone.approximate_date, created_at);
         }
     }
 }

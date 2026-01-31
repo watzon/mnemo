@@ -16,6 +16,7 @@ use lancedb::Table;
 use uuid::Uuid;
 
 use crate::error::{NovaError, Result};
+use crate::memory::tombstone::{Tombstone, EvictionReason};
 use crate::memory::types::{
     CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
 };
@@ -23,10 +24,12 @@ use crate::storage::filter::MemoryFilter;
 
 const EMBEDDING_DIMENSIONS: i32 = 384;
 const MEMORIES_TABLE: &str = "memories";
+const TOMBSTONES_TABLE: &str = "tombstones";
 
 pub struct LanceStore {
     connection: Connection,
     memories_table: Option<Table>,
+    tombstones_table: Option<Table>,
 }
 
 impl LanceStore {
@@ -43,6 +46,7 @@ impl LanceStore {
         Ok(Self {
             connection,
             memories_table: None,
+            tombstones_table: None,
         })
     }
 
@@ -75,6 +79,27 @@ impl LanceStore {
             Field::new("source", DataType::Utf8, false),
             Field::new("tier", DataType::Utf8, false),
             Field::new("compression", DataType::Utf8, false),
+            Field::new("entities", DataType::Utf8, false),
+        ]))
+    }
+
+    fn tombstones_schema() -> Arc<Schema> {
+        Arc::new(Schema::new(vec![
+            Field::new("original_id", DataType::Utf8, false),
+            Field::new(
+                "evicted_at",
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+                false,
+            ),
+            Field::new("topics", DataType::Utf8, false),
+            Field::new("participants", DataType::Utf8, false),
+            Field::new(
+                "approximate_date",
+                DataType::Timestamp(TimeUnit::Microsecond, Some("UTC".into())),
+                false,
+            ),
+            Field::new("reason", DataType::Utf8, false),
+            Field::new("reason_details", DataType::Utf8, true),
         ]))
     }
 
@@ -108,6 +133,7 @@ impl LanceStore {
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings.clone())),
+                Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings)),
             ],
         )
@@ -128,6 +154,47 @@ impl LanceStore {
 
         self.memories_table = Some(table);
         Ok(())
+    }
+
+    pub async fn create_tombstones_table(&mut self) -> Result<()> {
+        let schema = Self::tombstones_schema();
+        let batch = Self::create_empty_tombstones_batch(schema.clone());
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+
+        let table = self
+            .connection
+            .create_table(TOMBSTONES_TABLE, Box::new(batches))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to create tombstones table: {}", e)))?;
+
+        self.tombstones_table = Some(table);
+        Ok(())
+    }
+
+    fn create_empty_tombstones_batch(schema: Arc<Schema>) -> RecordBatch {
+        let empty_strings: Vec<Option<&str>> = vec![];
+        let empty_timestamps: Vec<i64> = vec![];
+
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(empty_strings.clone())),
+                Arc::new(
+                    TimestampMicrosecondArray::from(empty_timestamps.clone())
+                        .with_timezone("UTC"),
+                ),
+                Arc::new(StringArray::from(empty_strings.clone())),
+                Arc::new(StringArray::from(empty_strings.clone())),
+                Arc::new(
+                    TimestampMicrosecondArray::from(empty_timestamps.clone())
+                        .with_timezone("UTC"),
+                ),
+                Arc::new(StringArray::from(empty_strings.clone())),
+                Arc::new(StringArray::from(empty_strings)),
+            ],
+        )
+        .expect("Schema matches columns")
     }
 
     pub async fn create_vector_index(&self) -> Result<()> {
@@ -170,6 +237,18 @@ impl LanceStore {
         Ok(())
     }
 
+    pub async fn open_tombstones_table(&mut self) -> Result<()> {
+        let table = self
+            .connection
+            .open_table(TOMBSTONES_TABLE)
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to open tombstones table: {}", e)))?;
+
+        self.tombstones_table = Some(table);
+        Ok(())
+    }
+
     pub async fn table_exists(&self, name: &str) -> Result<bool> {
         let names = self
             .connection
@@ -183,6 +262,10 @@ impl LanceStore {
 
     pub fn memories_table(&self) -> Option<&Table> {
         self.memories_table.as_ref()
+    }
+
+    pub fn tombstones_table(&self) -> Option<&Table> {
+        self.tombstones_table.as_ref()
     }
 
     /// Convert a Memory struct to an Arrow RecordBatch
@@ -259,6 +342,12 @@ impl LanceStore {
             })
             .collect();
 
+        let entities: Vec<String> = memories
+            .iter()
+            .map(|m| m.entities.join(","))
+            .collect();
+        let entity_refs: Vec<&str> = entities.iter().map(String::as_str).collect();
+
         RecordBatch::try_new(
             schema,
             vec![
@@ -282,6 +371,7 @@ impl LanceStore {
                 Arc::new(StringArray::from(sources)),
                 Arc::new(StringArray::from(tiers)),
                 Arc::new(StringArray::from(compressions)),
+                Arc::new(StringArray::from(entity_refs)),
             ],
         )
         .map_err(|e| NovaError::Storage(format!("Failed to create RecordBatch: {}", e)))
@@ -360,6 +450,12 @@ impl LanceStore {
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get compression column".to_string()))?;
+
+        let entities_array = batch
+            .column(12)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get entities column".to_string()))?;
 
         // Parse ID
         let id = Uuid::parse_str(id_array.value(row))
@@ -441,6 +537,14 @@ impl LanceStore {
             other => return Err(NovaError::Storage(format!("Unknown compression level: {}", other))),
         };
 
+        // Parse entities (comma-separated)
+        let entities_str = entities_array.value(row);
+        let entities = if entities_str.is_empty() {
+            Vec::new()
+        } else {
+            entities_str.split(',').map(|s| s.to_string()).collect()
+        };
+
         Ok(Memory {
             id,
             content,
@@ -451,11 +555,304 @@ impl LanceStore {
             last_accessed,
             access_count,
             conversation_id,
-            entities: Vec::new(), // Entities not stored in Lance schema yet
+            entities,
             source,
             tier,
             compression,
         })
+    }
+
+    /// Convert a Tombstone struct to an Arrow RecordBatch
+    fn tombstone_to_batch(tombstone: &Tombstone, schema: Arc<Schema>) -> Result<RecordBatch> {
+        Self::tombstones_to_batch(&[tombstone.clone()], schema)
+    }
+
+    /// Convert multiple Tombstone structs to an Arrow RecordBatch
+    fn tombstones_to_batch(tombstones: &[Tombstone], schema: Arc<Schema>) -> Result<RecordBatch> {
+        let original_ids: Vec<String> = tombstones.iter().map(|t| t.original_id.to_string()).collect();
+        let id_refs: Vec<&str> = original_ids.iter().map(String::as_str).collect();
+
+        let evicted_at: Vec<i64> = tombstones
+            .iter()
+            .map(|t| t.evicted_at.timestamp_micros())
+            .collect();
+
+        let topics: Vec<String> = tombstones
+            .iter()
+            .map(|t| t.topics.join(","))
+            .collect();
+        let topic_refs: Vec<&str> = topics.iter().map(String::as_str).collect();
+
+        let participants: Vec<String> = tombstones
+            .iter()
+            .map(|t| t.participants.join(","))
+            .collect();
+        let participant_refs: Vec<&str> = participants.iter().map(String::as_str).collect();
+
+        let approximate_dates: Vec<i64> = tombstones
+            .iter()
+            .map(|t| t.approximate_date.timestamp_micros())
+            .collect();
+
+        let reasons: Vec<&str> = tombstones
+            .iter()
+            .map(|t| match t.reason {
+                EvictionReason::StoragePressure => "StoragePressure",
+                EvictionReason::LowWeight => "LowWeight",
+                EvictionReason::Superseded { .. } => "Superseded",
+                EvictionReason::ManualDeletion => "ManualDeletion",
+            })
+            .collect();
+
+        let reason_details: Vec<Option<String>> = tombstones
+            .iter()
+            .map(|t| match &t.reason {
+                EvictionReason::Superseded { by } => Some(by.to_string()),
+                _ => None,
+            })
+            .collect();
+        let reason_detail_refs: Vec<Option<&str>> = reason_details
+            .iter()
+            .map(|s| s.as_deref())
+            .collect();
+
+        RecordBatch::try_new(
+            schema,
+            vec![
+                Arc::new(StringArray::from(id_refs)),
+                Arc::new(
+                    TimestampMicrosecondArray::from(evicted_at).with_timezone("UTC"),
+                ),
+                Arc::new(StringArray::from(topic_refs)),
+                Arc::new(StringArray::from(participant_refs)),
+                Arc::new(
+                    TimestampMicrosecondArray::from(approximate_dates).with_timezone("UTC"),
+                ),
+                Arc::new(StringArray::from(reasons)),
+                Arc::new(StringArray::from(reason_detail_refs)),
+            ],
+        )
+        .map_err(|e| NovaError::Storage(format!("Failed to create tombstone RecordBatch: {}", e)))
+    }
+
+    /// Convert an Arrow RecordBatch row back to a Tombstone struct
+    fn batch_to_tombstone(batch: &RecordBatch, row: usize) -> Result<Tombstone> {
+        let original_id_array = batch
+            .column(0)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get original_id column".to_string()))?;
+
+        let evicted_at_array = batch
+            .column(1)
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get evicted_at column".to_string()))?;
+
+        let topics_array = batch
+            .column(2)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get topics column".to_string()))?;
+
+        let participants_array = batch
+            .column(3)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get participants column".to_string()))?;
+
+        let approximate_date_array = batch
+            .column(4)
+            .as_any()
+            .downcast_ref::<TimestampMicrosecondArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get approximate_date column".to_string()))?;
+
+        let reason_array = batch
+            .column(5)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get reason column".to_string()))?;
+
+        let reason_details_array = batch
+            .column(6)
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .ok_or_else(|| NovaError::Storage("Failed to get reason_details column".to_string()))?;
+
+        // Parse original_id
+        let original_id = Uuid::parse_str(original_id_array.value(row))
+            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {}", e)))?;
+
+        // Parse evicted_at
+        let evicted_at = Utc
+            .timestamp_micros(evicted_at_array.value(row))
+            .single()
+            .ok_or_else(|| NovaError::Storage("Failed to parse evicted_at timestamp".to_string()))?;
+
+        // Parse topics (comma-separated)
+        let topics_str = topics_array.value(row);
+        let topics = if topics_str.is_empty() {
+            Vec::new()
+        } else {
+            topics_str.split(',').map(|s| s.to_string()).collect()
+        };
+
+        // Parse participants (comma-separated)
+        let participants_str = participants_array.value(row);
+        let participants = if participants_str.is_empty() {
+            Vec::new()
+        } else {
+            participants_str.split(',').map(|s| s.to_string()).collect()
+        };
+
+        // Parse approximate_date
+        let approximate_date = Utc
+            .timestamp_micros(approximate_date_array.value(row))
+            .single()
+            .ok_or_else(|| NovaError::Storage("Failed to parse approximate_date timestamp".to_string()))?;
+
+        // Parse reason
+        let reason_str = reason_array.value(row);
+        let reason = match reason_str {
+            "StoragePressure" => EvictionReason::StoragePressure,
+            "LowWeight" => EvictionReason::LowWeight,
+            "Superseded" => {
+                let details = if reason_details_array.is_null(row) {
+                    None
+                } else {
+                    let val = reason_details_array.value(row);
+                    if val.is_empty() { None } else { Some(val) }
+                };
+                match details {
+                    Some(by_str) => {
+                        let by = Uuid::parse_str(by_str)
+                            .map_err(|e| NovaError::Storage(format!("Failed to parse superseded by UUID: {}", e)))?;
+                        EvictionReason::Superseded { by }
+                    }
+                    None => EvictionReason::Superseded { by: Uuid::nil() },
+                }
+            }
+            "ManualDeletion" => EvictionReason::ManualDeletion,
+            other => return Err(NovaError::Storage(format!("Unknown eviction reason: {}", other))),
+        };
+
+        Ok(Tombstone {
+            original_id,
+            evicted_at,
+            topics,
+            participants,
+            approximate_date,
+            reason,
+        })
+    }
+
+    /// Insert a single tombstone into the store
+    pub async fn insert_tombstone(&self, tombstone: &Tombstone) -> Result<()> {
+        let table = self.tombstones_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Tombstones table not initialized".to_string())
+        })?;
+
+        let schema = Self::tombstones_schema();
+        let batch = Self::tombstone_to_batch(tombstone, schema.clone())?;
+        let batches = RecordBatchIterator::new(vec![Ok(batch)], schema);
+
+        table
+            .add(Box::new(batches))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to insert tombstone: {}", e)))?;
+
+        Ok(())
+    }
+
+    /// Get a tombstone by original memory ID
+    pub async fn get_tombstone(&self, original_id: Uuid) -> Result<Option<Tombstone>> {
+        let table = self.tombstones_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Tombstones table not initialized".to_string())
+        })?;
+
+        let stream = table
+            .query()
+            .only_if(format!("original_id = '{}'", original_id))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to query tombstone: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {}", e)))?;
+
+        if batches.is_empty() {
+            return Ok(None);
+        }
+
+        let batch = &batches[0];
+        if batch.num_rows() == 0 {
+            return Ok(None);
+        }
+
+        let tombstone = Self::batch_to_tombstone(batch, 0)?;
+        Ok(Some(tombstone))
+    }
+
+    /// Search tombstones by topic (case-insensitive substring match)
+    pub async fn search_tombstones_by_topic(&self, topic: &str) -> Result<Vec<Tombstone>> {
+        let table = self.tombstones_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Tombstones table not initialized".to_string())
+        })?;
+
+        // Use SQL LIKE for substring matching (case-insensitive)
+        let pattern = format!("%{}%", topic.to_lowercase());
+        let stream = table
+            .query()
+            .only_if(format!("lower(topics) LIKE '{}'", pattern))
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to search tombstones: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {}", e)))?;
+
+        let mut tombstones = Vec::new();
+        for batch in &batches {
+            for row in 0..batch.num_rows() {
+                let tombstone = Self::batch_to_tombstone(batch, row)?;
+                tombstones.push(tombstone);
+            }
+        }
+
+        Ok(tombstones)
+    }
+
+    /// List all tombstones
+    pub async fn list_all_tombstones(&self) -> Result<Vec<Tombstone>> {
+        let table = self.tombstones_table.as_ref().ok_or_else(|| {
+            NovaError::Storage("Tombstones table not initialized".to_string())
+        })?;
+
+        let stream = table
+            .query()
+            .execute()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to list tombstones: {}", e)))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| NovaError::Storage(format!("Failed to collect tombstones: {}", e)))?;
+
+        let mut tombstones = Vec::new();
+        for batch in &batches {
+            for row in 0..batch.num_rows() {
+                let tombstone = Self::batch_to_tombstone(batch, row)?;
+                tombstones.push(tombstone);
+            }
+        }
+
+        Ok(tombstones)
     }
 
     /// Insert a single memory into the store
@@ -779,7 +1176,7 @@ mod tests {
     async fn test_schema_has_correct_fields() {
         let schema = LanceStore::memories_schema();
 
-        assert_eq!(schema.fields().len(), 12);
+        assert_eq!(schema.fields().len(), 13);
 
         let field_names: Vec<&str> = schema.fields().iter().map(|f| f.name().as_str()).collect();
         assert!(field_names.contains(&"id"));
@@ -794,6 +1191,7 @@ mod tests {
         assert!(field_names.contains(&"source"));
         assert!(field_names.contains(&"tier"));
         assert!(field_names.contains(&"compression"));
+        assert!(field_names.contains(&"entities"));
     }
 
     #[tokio::test]
@@ -1154,6 +1552,164 @@ mod tests {
             let elapsed = start.elapsed();
 
             assert!(elapsed.as_millis() < 1000, "Search took too long: {:?}", elapsed);
+        }
+    }
+
+    mod tombstones {
+        use super::*;
+        use crate::memory::tombstone::{Tombstone, EvictionReason};
+
+        #[tokio::test]
+        async fn test_create_and_open_tombstones_table() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+
+            assert!(store.tombstones_table().is_none());
+
+            store.create_tombstones_table().await.unwrap();
+
+            assert!(store.tombstones_table().is_some());
+        }
+
+        #[tokio::test]
+        async fn test_insert_and_get_tombstone() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let original_id = Uuid::new_v4();
+            let tombstone = Tombstone::new(
+                original_id,
+                vec!["rust".to_string(), "programming".to_string()],
+                vec!["alice".to_string()],
+                Utc::now(),
+                EvictionReason::StoragePressure,
+            );
+
+            store.insert_tombstone(&tombstone).await.unwrap();
+
+            let retrieved = store.get_tombstone(original_id).await.unwrap();
+            assert!(retrieved.is_some());
+
+            let retrieved = retrieved.unwrap();
+            assert_eq!(retrieved.original_id, original_id);
+            assert_eq!(retrieved.topics, vec!["rust", "programming"]);
+            assert_eq!(retrieved.participants, vec!["alice"]);
+            assert!(matches!(retrieved.reason, EvictionReason::StoragePressure));
+        }
+
+        #[tokio::test]
+        async fn test_get_nonexistent_tombstone_returns_none() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let nonexistent_id = Uuid::new_v4();
+            let result = store.get_tombstone(nonexistent_id).await.unwrap();
+            assert!(result.is_none());
+        }
+
+        #[tokio::test]
+        async fn test_search_tombstones_by_topic() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let tombstone1 = Tombstone::new(
+                Uuid::new_v4(),
+                vec!["machine-learning".to_string(), "python".to_string()],
+                vec![],
+                Utc::now(),
+                EvictionReason::LowWeight,
+            );
+
+            let tombstone2 = Tombstone::new(
+                Uuid::new_v4(),
+                vec!["rust".to_string(), "systems-programming".to_string()],
+                vec![],
+                Utc::now(),
+                EvictionReason::StoragePressure,
+            );
+
+            let tombstone3 = Tombstone::new(
+                Uuid::new_v4(),
+                vec!["python".to_string(), "django".to_string()],
+                vec![],
+                Utc::now(),
+                EvictionReason::LowWeight,
+            );
+
+            store.insert_tombstone(&tombstone1).await.unwrap();
+            store.insert_tombstone(&tombstone2).await.unwrap();
+            store.insert_tombstone(&tombstone3).await.unwrap();
+
+            let results = store.search_tombstones_by_topic("python").await.unwrap();
+            assert_eq!(results.len(), 2);
+
+            let results = store.search_tombstones_by_topic("rust").await.unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].topics, vec!["rust", "systems-programming"]);
+
+            let results = store.search_tombstones_by_topic("nonexistent").await.unwrap();
+            assert!(results.is_empty());
+        }
+
+        #[tokio::test]
+        async fn test_list_all_tombstones() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let tombstones: Vec<Tombstone> = (0..3)
+                .map(|i| Tombstone::new(
+                    Uuid::new_v4(),
+                    vec![format!("topic-{}", i)],
+                    vec![],
+                    Utc::now(),
+                    EvictionReason::StoragePressure,
+                ))
+                .collect();
+
+            for tombstone in &tombstones {
+                store.insert_tombstone(tombstone).await.unwrap();
+            }
+
+            let all_tombstones = store.list_all_tombstones().await.unwrap();
+            assert_eq!(all_tombstones.len(), 3);
+        }
+
+        #[tokio::test]
+        async fn test_tombstone_roundtrip_preserves_all_fields() {
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_tombstones_table().await.unwrap();
+
+            let original_id = Uuid::new_v4();
+            let superseded_by = Uuid::new_v4();
+            let created_at = Utc::now();
+
+            let tombstone = Tombstone {
+                original_id,
+                evicted_at: Utc::now(),
+                topics: vec!["topic1".to_string(), "topic2".to_string()],
+                participants: vec!["participant1".to_string()],
+                approximate_date: created_at,
+                reason: EvictionReason::Superseded { by: superseded_by },
+            };
+
+            store.insert_tombstone(&tombstone).await.unwrap();
+
+            let retrieved = store.get_tombstone(original_id).await.unwrap().unwrap();
+
+            assert_eq!(retrieved.original_id, original_id);
+            assert_eq!(retrieved.topics, vec!["topic1", "topic2"]);
+            assert_eq!(retrieved.participants, vec!["participant1"]);
+            assert_eq!(retrieved.approximate_date, created_at);
+
+            match retrieved.reason {
+                EvictionReason::Superseded { by } => assert_eq!(by, superseded_by),
+                _ => panic!("Expected Superseded reason"),
+            }
         }
     }
 }
