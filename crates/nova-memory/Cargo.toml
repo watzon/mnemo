@@ -1,0 +1,15 @@
+[package]
+name = "nova-memory"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Nova Memory daemon - HTTP proxy for LLM API memory injection"
+
+[[bin]]
+name = "nova-memory"
+path = "src/main.rs"
+
+[dependencies]

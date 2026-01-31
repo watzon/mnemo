@@ -1,0 +1,15 @@
+[package]
+name = "nova-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Nova Memory CLI - Management tool for the nova-memory daemon"
+
+[[bin]]
+name = "nova-cli"
+path = "src/main.rs"
+
+[dependencies]
