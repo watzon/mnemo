@@ -1668,7 +1668,7 @@ Phase 4: Capacity Management (Waves 7-8)
 
 ---
 
-- [ ] 4.7. Final Integration Test
+- [x] 4.7. Final Integration Test
 
   **What to do**:
   - Create `tests/integration_test.rs`:
