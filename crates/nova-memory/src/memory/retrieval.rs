@@ -7,9 +7,9 @@
 use crate::embedding::EmbeddingModel;
 use crate::error::Result;
 use crate::memory::types::Memory;
-use crate::memory::weight::{calculate_effective_weight, WeightConfig};
-use crate::storage::filter::MemoryFilter;
+use crate::memory::weight::{WeightConfig, calculate_effective_weight};
 use crate::storage::LanceStore;
+use crate::storage::filter::MemoryFilter;
 
 /// A retrieved memory with scoring information
 #[derive(Debug, Clone)]
@@ -269,7 +269,10 @@ mod tests {
         let v1 = vec![1.0, 0.0, 0.0];
         let v2 = vec![1.0, 0.0, 0.0];
         let sim = cosine_similarity(&v1, &v2);
-        assert!((sim - 1.0).abs() < 0.001, "Identical vectors should have similarity ~1.0, got: {}", sim);
+        assert!(
+            (sim - 1.0).abs() < 0.001,
+            "Identical vectors should have similarity ~1.0, got: {sim}"
+        );
     }
 
     #[test]
@@ -277,7 +280,10 @@ mod tests {
         let v1 = vec![1.0, 0.0, 0.0];
         let v2 = vec![0.0, 1.0, 0.0];
         let sim = cosine_similarity(&v1, &v2);
-        assert!(sim.abs() < 0.001, "Orthogonal vectors should have similarity ~0.0, got: {}", sim);
+        assert!(
+            sim.abs() < 0.001,
+            "Orthogonal vectors should have similarity ~0.0, got: {sim}"
+        );
     }
 
     #[test]
@@ -285,7 +291,10 @@ mod tests {
         let v1 = vec![1.0, 0.0, 0.0];
         let v2 = vec![-1.0, 0.0, 0.0];
         let sim = cosine_similarity(&v1, &v2);
-        assert!((sim + 1.0).abs() < 0.001, "Opposite vectors should have similarity ~-1.0, got: {}", sim);
+        assert!(
+            (sim + 1.0).abs() < 0.001,
+            "Opposite vectors should have similarity ~-1.0, got: {sim}"
+        );
     }
 
     #[test]
@@ -312,9 +321,16 @@ mod tests {
         let similarity_weight = 0.7;
         let rerank_weight = 0.3;
 
-        let retrieved = RetrievedMemory::new(memory, similarity, &config, similarity_weight, rerank_weight);
+        let retrieved = RetrievedMemory::new(
+            memory,
+            similarity,
+            &config,
+            similarity_weight,
+            rerank_weight,
+        );
 
-        let expected_final = similarity * similarity_weight + retrieved.effective_weight * rerank_weight;
+        let expected_final =
+            similarity * similarity_weight + retrieved.effective_weight * rerank_weight;
         assert!(
             (retrieved.final_score - expected_final).abs() < 0.001,
             "Final score should be ~{}, got: {}",
@@ -341,16 +357,19 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
-            let mut high_weight = create_memory_with_embedding("High weight memory", base_embedding.clone());
+
+            let mut high_weight =
+                create_memory_with_embedding("High weight memory", base_embedding.clone());
             high_weight.weight = 0.9;
             high_weight.access_count = 50;
-            
-            let mut low_weight = create_memory_with_embedding("Low weight memory", base_embedding.clone());
+
+            let mut low_weight =
+                create_memory_with_embedding("Low weight memory", base_embedding.clone());
             low_weight.weight = 0.1;
             low_weight.access_count = 1;
-            
-            let mut medium_weight = create_memory_with_embedding("Medium weight memory", base_embedding.clone());
+
+            let mut medium_weight =
+                create_memory_with_embedding("Medium weight memory", base_embedding.clone());
             medium_weight.weight = 0.5;
             medium_weight.access_count = 10;
 
@@ -361,7 +380,10 @@ mod tests {
             let mut embedding_model = EmbeddingModel::new().unwrap();
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
-            let results = pipeline.retrieve_by_embedding(&base_embedding, 10).await.unwrap();
+            let results = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
 
             assert_eq!(results.len(), 3);
 
@@ -397,7 +419,10 @@ mod tests {
             let mut embedding_model = EmbeddingModel::new().unwrap();
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
-            let results = pipeline.retrieve_by_embedding(&base_embedding, 10).await.unwrap();
+            let results = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
             assert_eq!(results.len(), 1);
 
             let updated = store.get(id).await.unwrap().unwrap();
@@ -415,20 +440,25 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
+
             for i in 0..10 {
-                let memory = create_memory_with_embedding(
-                    &format!("Memory {}", i),
-                    base_embedding.clone(),
-                );
+                let memory =
+                    create_memory_with_embedding(&format!("Memory {i}"), base_embedding.clone());
                 store.insert(&memory).await.unwrap();
             }
 
             let mut embedding_model = EmbeddingModel::new().unwrap();
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
-            let results = pipeline.retrieve_by_embedding(&base_embedding, 3).await.unwrap();
-            assert_eq!(results.len(), 3, "Should return exactly the requested limit");
+            let results = pipeline
+                .retrieve_by_embedding(&base_embedding, 3)
+                .await
+                .unwrap();
+            assert_eq!(
+                results.len(),
+                3,
+                "Should return exactly the requested limit"
+            );
         }
 
         #[tokio::test]
@@ -441,7 +471,10 @@ mod tests {
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
             let results = pipeline.retrieve("test query", 10).await.unwrap();
-            assert!(results.is_empty(), "Should return empty results when no memories exist");
+            assert!(
+                results.is_empty(),
+                "Should return empty results when no memories exist"
+            );
         }
 
         #[tokio::test]
@@ -457,7 +490,10 @@ mod tests {
             let mut embedding_model = EmbeddingModel::new().unwrap();
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
-            let results = pipeline.retrieve_by_embedding(&base_embedding, 0).await.unwrap();
+            let results = pipeline
+                .retrieve_by_embedding(&base_embedding, 0)
+                .await
+                .unwrap();
             assert!(results.is_empty(), "Zero limit should return empty results");
         }
 
@@ -468,11 +504,13 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let embedding: Vec<f32> = vec![0.5; 384];
-            
-            let mut low_weight_memory = create_memory_with_embedding("Low weight", embedding.clone());
+
+            let mut low_weight_memory =
+                create_memory_with_embedding("Low weight", embedding.clone());
             low_weight_memory.weight = 0.1;
-            
-            let mut high_weight_memory = create_memory_with_embedding("High weight", embedding.clone());
+
+            let mut high_weight_memory =
+                create_memory_with_embedding("High weight", embedding.clone());
             high_weight_memory.weight = 1.0;
 
             store.insert(&low_weight_memory).await.unwrap();
@@ -481,14 +519,21 @@ mod tests {
             let mut embedding_model = EmbeddingModel::new().unwrap();
             let mut pipeline = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
-            let results = pipeline.retrieve_by_embedding(&embedding, 10).await.unwrap();
+            let results = pipeline
+                .retrieve_by_embedding(&embedding, 10)
+                .await
+                .unwrap();
 
             assert_eq!(results.len(), 2);
-            
+
             let sim_diff = (results[0].similarity_score - results[1].similarity_score).abs();
-            assert!(sim_diff < 0.001, "Similarity scores should be equal: {} vs {}", 
-                results[0].similarity_score, results[1].similarity_score);
-            
+            assert!(
+                sim_diff < 0.001,
+                "Similarity scores should be equal: {} vs {}",
+                results[0].similarity_score,
+                results[1].similarity_score
+            );
+
             assert!(
                 results[0].effective_weight > results[1].effective_weight,
                 "Higher weight memory should have higher effective_weight"

@@ -6,7 +6,7 @@
 use chrono::{Duration, Utc};
 use nova_memory::memory::types::{Memory, MemorySource, MemoryType};
 use nova_memory::memory::weight::{
-    calculate_effective_weight, calculate_initial_weight, WeightConfig,
+    WeightConfig, calculate_effective_weight, calculate_initial_weight,
 };
 use nova_memory::router::{Entity, EntityLabel, RouterOutput};
 
@@ -28,7 +28,7 @@ fn create_router_output(entities_count: usize, emotional_valence: f32) -> Router
         topics: vec![],
         entities: (0..entities_count)
             .map(|i| Entity {
-                text: format!("entity{}", i),
+                text: format!("entity{i}"),
                 label: EntityLabel::Person,
                 confidence: 0.9,
             })
@@ -77,7 +77,7 @@ mod initial_weight_tests {
     fn test_initial_weight_base_value() {
         let router_output = create_router_output(0, 0.0);
         let weight = calculate_initial_weight(&router_output, MemorySource::File);
-        assert!(weight >= 0.1 && weight <= 1.0);
+        assert!((0.1..=1.0).contains(&weight));
     }
 
     #[test]
@@ -206,10 +206,7 @@ mod access_reinforcement_tests {
             let weight = calculate_effective_weight(&memory, &config);
             assert!(
                 weight >= previous_weight,
-                "Weight should increase or stay same with more accesses: count={} weight={} previous={}",
-                count,
-                weight,
-                previous_weight
+                "Weight should increase or stay same with more accesses: count={count} weight={weight} previous={previous_weight}"
             );
             previous_weight = weight;
         }
@@ -250,8 +247,8 @@ mod emotional_boost_tests {
     #[test]
     fn test_emotional_content_gets_boost() {
         let config = WeightConfig::default();
-        let mut memory_neutral = create_test_memory("The weather is nice today", 0.5, 0, 0);
-        let mut memory_emotional = create_test_memory("I love this amazing day", 0.5, 0, 0);
+        let memory_neutral = create_test_memory("The weather is nice today", 0.5, 0, 0);
+        let memory_emotional = create_test_memory("I love this amazing day", 0.5, 0, 0);
         let weight_neutral = calculate_effective_weight(&memory_neutral, &config);
         let weight_emotional = calculate_effective_weight(&memory_emotional, &config);
         assert!(weight_emotional > weight_neutral);
@@ -260,8 +257,8 @@ mod emotional_boost_tests {
     #[test]
     fn test_negative_emotion_also_gets_boost() {
         let config = WeightConfig::default();
-        let mut memory_neutral = create_test_memory("The cat sat on the mat", 0.5, 0, 0);
-        let mut memory_negative = create_test_memory("I hate this terrible awful day", 0.5, 0, 0);
+        let memory_neutral = create_test_memory("The cat sat on the mat", 0.5, 0, 0);
+        let memory_negative = create_test_memory("I hate this terrible awful day", 0.5, 0, 0);
         let weight_neutral = calculate_effective_weight(&memory_neutral, &config);
         let weight_negative = calculate_effective_weight(&memory_negative, &config);
         assert!(weight_negative > weight_neutral);
@@ -269,7 +266,7 @@ mod emotional_boost_tests {
 
     #[test]
     fn test_emotional_multiplier_affects_boost() {
-        let mut memory = create_test_memory("I love this amazing wonderful day", 0.5, 0, 0);
+        let memory = create_test_memory("I love this amazing wonderful day", 0.5, 0, 0);
         let config_low = WeightConfig::new(0.1, 0.1, 0.01, 0.5, 0.05);
         let config_high = WeightConfig::new(0.1, 0.1, 1.0, 0.5, 0.05);
         let weight_low = calculate_effective_weight(&memory, &config_low);

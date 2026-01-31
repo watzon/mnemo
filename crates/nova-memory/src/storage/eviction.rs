@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::error::Result;
 use crate::memory::tombstone::{EvictionReason, Tombstone};
 use crate::memory::types::{Memory, StorageTier};
-use crate::memory::weight::{calculate_effective_weight, WeightConfig};
+use crate::memory::weight::{WeightConfig, calculate_effective_weight};
 use crate::storage::LanceStore;
 
 /// Configuration for eviction behavior
@@ -296,11 +296,7 @@ impl<'a> Evictor<'a> {
 
     /// Create a tombstone and evict a memory.
     /// This is the preferred method for eviction as it preserves metadata.
-    async fn evict_with_tombstone(
-        &self,
-        memory: &Memory,
-        reason: EvictionReason,
-    ) -> Result<bool> {
+    async fn evict_with_tombstone(&self, memory: &Memory, reason: EvictionReason) -> Result<bool> {
         // Create tombstone first (before deleting)
         self.create_tombstone(memory, reason).await?;
 
@@ -385,9 +381,7 @@ mod tests {
 
             assert!(
                 recent_priority > old_priority,
-                "Recently accessed memory should have higher priority (keep), recent={}, old={}",
-                recent_priority,
-                old_priority
+                "Recently accessed memory should have higher priority (keep), recent={recent_priority}, old={old_priority}"
             );
         }
 
@@ -526,7 +520,7 @@ mod tests {
             let evictor = Evictor::with_config(&store, config);
 
             let memories: Vec<Memory> = (0..50)
-                .map(|i| create_test_memory(&format!("Memory {}", i), 0.5, StorageTier::Hot))
+                .map(|i| create_test_memory(&format!("Memory {i}"), 0.5, StorageTier::Hot))
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
@@ -548,7 +542,7 @@ mod tests {
             let evictor = Evictor::with_config(&store, config);
 
             let memories: Vec<Memory> = (0..75)
-                .map(|i| create_test_memory(&format!("Memory {}", i), 0.5, StorageTier::Hot))
+                .map(|i| create_test_memory(&format!("Memory {i}"), 0.5, StorageTier::Hot))
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
@@ -570,7 +564,7 @@ mod tests {
             let evictor = Evictor::with_config(&store, config);
 
             let memories: Vec<Memory> = (0..85)
-                .map(|i| create_test_memory(&format!("Memory {}", i), 0.5, StorageTier::Hot))
+                .map(|i| create_test_memory(&format!("Memory {i}"), 0.5, StorageTier::Hot))
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
@@ -592,7 +586,7 @@ mod tests {
             let evictor = Evictor::with_config(&store, config);
 
             let memories: Vec<Memory> = (0..96)
-                .map(|i| create_test_memory(&format!("Memory {}", i), 0.5, StorageTier::Hot))
+                .map(|i| create_test_memory(&format!("Memory {i}"), 0.5, StorageTier::Hot))
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
@@ -619,19 +613,16 @@ mod tests {
             // Insert 50 memories = 50% capacity (below 80% threshold)
             let memories: Vec<Memory> = (0..50)
                 .map(|i| {
-                    create_memory_with_access(
-                        &format!("Memory {}", i),
-                        0.3,
-                        StorageTier::Hot,
-                        100,
-                        0,
-                    )
+                    create_memory_with_access(&format!("Memory {i}"), 0.3, StorageTier::Hot, 100, 0)
                 })
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
             let evicted = evictor.evict_if_needed(StorageTier::Hot).await.unwrap();
-            assert!(evicted.is_empty(), "No eviction should occur below threshold");
+            assert!(
+                evicted.is_empty(),
+                "No eviction should occur below threshold"
+            );
         }
 
         #[tokio::test]
@@ -654,7 +645,7 @@ mod tests {
             for i in 0..9 {
                 let weight = 0.1 + (i as f32) * 0.05; // 0.1, 0.15, 0.20, ...
                 let mem =
-                    create_memory_with_access(&format!("Mem-{}", i), weight, StorageTier::Hot, 48, 0);
+                    create_memory_with_access(&format!("Mem-{i}"), weight, StorageTier::Hot, 48, 0);
                 memories.push(mem);
             }
             store.insert_batch(&memories).await.unwrap();
@@ -700,7 +691,7 @@ mod tests {
             // Protected by recency
             for i in 0..3 {
                 memories.push(create_memory_with_access(
-                    &format!("Recent-{}", i),
+                    &format!("Recent-{i}"),
                     0.3,
                     StorageTier::Hot,
                     1, // Recently accessed
@@ -711,7 +702,7 @@ mod tests {
             // Protected by weight
             for i in 0..3 {
                 memories.push(create_memory_with_access(
-                    &format!("Heavy-{}", i),
+                    &format!("Heavy-{i}"),
                     0.8, // High weight
                     StorageTier::Hot,
                     100,
@@ -722,7 +713,7 @@ mod tests {
             // Unprotected
             for i in 0..3 {
                 memories.push(create_memory_with_access(
-                    &format!("Evictable-{}", i),
+                    &format!("Evictable-{i}"),
                     0.2, // Low weight
                     StorageTier::Hot,
                     100, // Old access
@@ -762,8 +753,13 @@ mod tests {
             let mut memories = Vec::new();
             for i in 0..5 {
                 let weight = 0.1 + (i as f32) * 0.1;
-                let mem =
-                    create_memory_with_access(&format!("Candidate-{}", i), weight, StorageTier::Hot, 48, 0);
+                let mem = create_memory_with_access(
+                    &format!("Candidate-{i}"),
+                    weight,
+                    StorageTier::Hot,
+                    48,
+                    0,
+                );
                 memories.push(mem);
             }
             store.insert_batch(&memories).await.unwrap();
@@ -773,7 +769,11 @@ mod tests {
                 .await
                 .unwrap();
 
-            assert_eq!(candidates.len(), 3, "Should return requested number of candidates");
+            assert_eq!(
+                candidates.len(),
+                3,
+                "Should return requested number of candidates"
+            );
 
             // Verify candidates are sorted by priority (lowest first)
             for i in 0..candidates.len() - 1 {
@@ -820,7 +820,7 @@ mod tests {
             let mut memories = Vec::new();
             for i in 0..9 {
                 let mem = create_memory_with_entities(
-                    &format!("Evictable-{}", i),
+                    &format!("Evictable-{i}"),
                     0.1 + (i as f32) * 0.05,
                     StorageTier::Hot,
                     48,
@@ -900,7 +900,7 @@ mod tests {
             // Add more memories to trigger eviction
             for i in 0..8 {
                 let mem = create_memory_with_access(
-                    &format!("Filler-{}", i),
+                    &format!("Filler-{i}"),
                     0.1 + (i as f32) * 0.01,
                     StorageTier::Hot,
                     48,
@@ -915,7 +915,10 @@ mod tests {
 
             // Find the tombstone for our specific memory
             let tombstone = store.get_tombstone(memory_id).await.unwrap();
-            assert!(tombstone.is_some(), "Should have created a tombstone for the memory");
+            assert!(
+                tombstone.is_some(),
+                "Should have created a tombstone for the memory"
+            );
 
             let tombstone = tombstone.unwrap();
             assert_eq!(tombstone.topics.len(), 3);
@@ -964,7 +967,7 @@ mod tests {
             // Add more memories to trigger aggressive eviction (need > 95% for multiple evictions)
             for i in 0..8 {
                 let mem = create_memory_with_access(
-                    &format!("Filler-{}", i),
+                    &format!("Filler-{i}"),
                     0.5 + (i as f32) * 0.01, // Higher weights to avoid eviction
                     StorageTier::Hot,
                     48,
@@ -982,17 +985,35 @@ mod tests {
             );
 
             // Search tombstones by topic
-            let ml_tombstones = store.search_tombstones_by_topic("machine-learning").await.unwrap();
-            assert!(!ml_tombstones.is_empty(), "Should find tombstone by 'machine-learning' topic");
+            let ml_tombstones = store
+                .search_tombstones_by_topic("machine-learning")
+                .await
+                .unwrap();
+            assert!(
+                !ml_tombstones.is_empty(),
+                "Should find tombstone by 'machine-learning' topic"
+            );
 
             let python_tombstones = store.search_tombstones_by_topic("python").await.unwrap();
-            assert!(!python_tombstones.is_empty(), "Should find tombstone by 'python' topic");
+            assert!(
+                !python_tombstones.is_empty(),
+                "Should find tombstone by 'python' topic"
+            );
 
             let web_tombstones = store.search_tombstones_by_topic("web").await.unwrap();
-            assert!(!web_tombstones.is_empty(), "Should find tombstone by 'web' topic");
+            assert!(
+                !web_tombstones.is_empty(),
+                "Should find tombstone by 'web' topic"
+            );
 
-            let nonexistent = store.search_tombstones_by_topic("nonexistent").await.unwrap();
-            assert!(nonexistent.is_empty(), "Should not find tombstones for nonexistent topic");
+            let nonexistent = store
+                .search_tombstones_by_topic("nonexistent")
+                .await
+                .unwrap();
+            assert!(
+                nonexistent.is_empty(),
+                "Should not find tombstones for nonexistent topic"
+            );
         }
 
         #[tokio::test]
@@ -1027,7 +1048,7 @@ mod tests {
             // Add more memories to trigger eviction
             for i in 0..8 {
                 let mem = create_memory_with_access(
-                    &format!("Filler-{}", i),
+                    &format!("Filler-{i}"),
                     0.1 + (i as f32) * 0.01,
                     StorageTier::Hot,
                     48,

@@ -11,7 +11,7 @@
 
 use axum::{
     body::Body,
-    http::{Request, Response, StatusCode},
+    http::{Response, StatusCode},
     response::IntoResponse,
 };
 
@@ -37,10 +37,7 @@ pub enum ProxyError {
 
     /// Upstream LLM API returned an error
     #[error("Upstream error: {status}")]
-    Upstream {
-        status: StatusCode,
-        body: String,
-    },
+    Upstream { status: StatusCode, body: String },
 
     /// Request parsing or validation failed
     #[error("Request error: {0}")]
@@ -124,12 +121,12 @@ pub enum PassthroughDecision {
 
 impl PartialEq for PassthroughDecision {
     fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::WithMemory, Self::WithMemory) => true,
-            (Self::SkipMemory, Self::SkipMemory) => true,
-            (Self::ReturnError(_), Self::ReturnError(_)) => true,
-            _ => false,
-        }
+        matches!(
+            (self, other),
+            (Self::WithMemory, Self::WithMemory)
+                | (Self::SkipMemory, Self::SkipMemory)
+                | (Self::ReturnError(_), Self::ReturnError(_))
+        )
     }
 }
 
@@ -299,20 +296,6 @@ pub fn handle_proxy_error(error: ProxyError) -> PassthroughDecision {
     }
 }
 
-/// Attempt to create a passthrough response without memory features
-///
-/// This creates a response that indicates memory features are disabled
-/// but the request should still be proxied to the upstream.
-pub fn create_passthrough_response<B>(_request: &Request<B>) -> Response<Body> {
-    // Create a minimal response indicating passthrough mode
-    // In practice, the actual proxying happens at a higher level
-    Response::builder()
-        .status(StatusCode::OK)
-        .header("x-nova-memory-status", "passthrough")
-        .body(Body::empty())
-        .unwrap()
-}
-
 /// Wrap a memory operation with error handling
 ///
 /// This helper function wraps any fallible operation and converts
@@ -349,10 +332,7 @@ mod tests {
 
     #[test]
     fn test_proxy_error_categories() {
-        assert_eq!(
-            ProxyError::Router("test".to_string()).category(),
-            "router"
-        );
+        assert_eq!(ProxyError::Router("test".to_string()).category(), "router");
         assert_eq!(
             ProxyError::Retrieval("test".to_string()).category(),
             "retrieval"

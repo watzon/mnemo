@@ -2,8 +2,8 @@
 //!
 //! Tests the LanceStore implementation with real database operations.
 
+use nova_memory::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use nova_memory::storage::LanceStore;
-use nova_memory::memory::types::{Memory, MemoryType, MemorySource, StorageTier, CompressionLevel};
 use tempfile::tempdir;
 use uuid::Uuid;
 
@@ -18,7 +18,11 @@ fn create_test_memory(content: &str) -> Memory {
 }
 
 /// Test fixture: Create a test memory with specific embedding
-fn create_memory_with_embedding(content: &str, embedding: Vec<f32>, memory_type: MemoryType) -> Memory {
+fn create_memory_with_embedding(
+    content: &str,
+    embedding: Vec<f32>,
+    memory_type: MemoryType,
+) -> Memory {
     Memory::new(
         content.to_string(),
         embedding,
@@ -46,15 +50,18 @@ mod insertion_tests {
     #[tokio::test]
     async fn test_insert_and_retrieve_roundtrip() {
         let (store, _dir) = create_test_store().await;
-        
+
         let memory = create_test_memory("Test memory content for roundtrip");
         let id = memory.id;
 
         store.insert(&memory).await.unwrap();
 
         let retrieved = store.get(id).await.unwrap();
-        assert!(retrieved.is_some(), "Memory should be retrievable after insertion");
-        
+        assert!(
+            retrieved.is_some(),
+            "Memory should be retrievable after insertion"
+        );
+
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.id, id);
         assert_eq!(retrieved.content, memory.content);
@@ -66,19 +73,19 @@ mod insertion_tests {
     #[tokio::test]
     async fn test_insert_batch_multiple_memories() {
         let (store, _dir) = create_test_store().await;
-        
+
         let memories: Vec<Memory> = (0..5)
-            .map(|i| create_test_memory(&format!("Batch memory {}", i)))
+            .map(|i| create_test_memory(&format!("Batch memory {i}")))
             .collect();
-        
+
         let ids: Vec<Uuid> = memories.iter().map(|m| m.id).collect();
 
         store.insert_batch(&memories).await.unwrap();
 
         for (i, id) in ids.iter().enumerate() {
             let retrieved = store.get(*id).await.unwrap();
-            assert!(retrieved.is_some(), "Memory {} should be retrievable", i);
-            assert_eq!(retrieved.unwrap().content, format!("Batch memory {}", i));
+            assert!(retrieved.is_some(), "Memory {i} should be retrievable");
+            assert_eq!(retrieved.unwrap().content, format!("Batch memory {i}"));
         }
     }
 
@@ -93,10 +100,10 @@ mod insertion_tests {
     #[tokio::test]
     async fn test_retrieve_nonexistent_returns_none() {
         let (store, _dir) = create_test_store().await;
-        
+
         let nonexistent_id = Uuid::new_v4();
         let result = store.get(nonexistent_id).await.unwrap();
-        
+
         assert!(result.is_none(), "Nonexistent memory should return None");
     }
 }
@@ -108,14 +115,14 @@ mod persistence_tests {
     async fn test_persistence_across_reopen() {
         let dir = tempdir().unwrap();
         let path = dir.path().to_path_buf();
-        
+
         // First session: create store and insert memories
         let memory_ids = {
             let mut store = LanceStore::connect(&path).await.unwrap();
             store.create_memories_table().await.unwrap();
 
             let memories: Vec<Memory> = (0..3)
-                .map(|i| create_test_memory(&format!("Persistent memory {}", i)))
+                .map(|i| create_test_memory(&format!("Persistent memory {i}")))
                 .collect();
 
             let ids: Vec<Uuid> = memories.iter().map(|m| m.id).collect();
@@ -126,11 +133,14 @@ mod persistence_tests {
         {
             let mut store = LanceStore::connect(&path).await.unwrap();
             store.open_memories_table().await.unwrap();
-            
+
             for (i, id) in memory_ids.iter().enumerate() {
                 let retrieved = store.get(*id).await.unwrap();
-                assert!(retrieved.is_some(), "Memory {} should persist after reopen", i);
-                assert_eq!(retrieved.unwrap().content, format!("Persistent memory {}", i));
+                assert!(
+                    retrieved.is_some(),
+                    "Memory {i} should persist after reopen"
+                );
+                assert_eq!(retrieved.unwrap().content, format!("Persistent memory {i}"));
             }
         }
     }
@@ -138,7 +148,7 @@ mod persistence_tests {
     #[tokio::test]
     async fn test_table_exists_after_creation() {
         let dir = tempdir().unwrap();
-        
+
         let mut store = LanceStore::connect(dir.path()).await.unwrap();
 
         assert!(!store.table_exists("memories").await.unwrap());
@@ -154,25 +164,21 @@ mod search_tests {
     #[tokio::test]
     async fn test_vector_search_returns_relevant_results() {
         let (store, _dir) = create_test_store().await;
-        
+
         let base_embedding: Vec<f32> = vec![0.5; 384];
 
         let memories = vec![
             create_memory_with_embedding(
                 "Very similar memory",
                 similar_embedding(&base_embedding, 0.01),
-                MemoryType::Semantic
+                MemoryType::Semantic,
             ),
             create_memory_with_embedding(
                 "Somewhat similar memory",
                 similar_embedding(&base_embedding, 0.05),
-                MemoryType::Semantic
+                MemoryType::Semantic,
             ),
-            create_memory_with_embedding(
-                "Different memory",
-                vec![0.9; 384],
-                MemoryType::Semantic
-            ),
+            create_memory_with_embedding("Different memory", vec![0.9; 384], MemoryType::Semantic),
         ];
 
         store.insert_batch(&memories).await.unwrap();
@@ -180,24 +186,29 @@ mod search_tests {
         let results = store.search(&base_embedding, 10).await.unwrap();
 
         assert_eq!(results.len(), 3, "Should find all memories");
-        assert!(results[0].content.contains("similar"), "Most similar should be ranked first");
+        assert!(
+            results[0].content.contains("similar"),
+            "Most similar should be ranked first"
+        );
     }
 
     #[tokio::test]
     async fn test_search_respects_limit() {
         let (store, _dir) = create_test_store().await;
-        
+
         let base_embedding: Vec<f32> = vec![0.5; 384];
         let memories: Vec<Memory> = (0..10)
-            .map(|i| create_memory_with_embedding(
-                &format!("Memory {}", i),
-                similar_embedding(&base_embedding, i as f32 * 0.01),
-                MemoryType::Semantic,
-            ))
+            .map(|i| {
+                create_memory_with_embedding(
+                    &format!("Memory {i}"),
+                    similar_embedding(&base_embedding, i as f32 * 0.01),
+                    MemoryType::Semantic,
+                )
+            })
             .collect();
-        
+
         store.insert_batch(&memories).await.unwrap();
-        
+
         let results = store.search(&base_embedding, 3).await.unwrap();
         assert_eq!(results.len(), 3, "Should respect the limit parameter");
     }
@@ -205,11 +216,14 @@ mod search_tests {
     #[tokio::test]
     async fn test_search_returns_empty_when_no_memories() {
         let (store, _dir) = create_test_store().await;
-        
+
         let query_embedding: Vec<f32> = vec![0.5; 384];
         let results = store.search(&query_embedding, 10).await.unwrap();
-        
-        assert!(results.is_empty(), "Search on empty store should return empty results");
+
+        assert!(
+            results.is_empty(),
+            "Search on empty store should return empty results"
+        );
     }
 }
 
@@ -219,11 +233,11 @@ mod update_tests {
     #[tokio::test]
     async fn test_update_access_increments_count() {
         let (store, _dir) = create_test_store().await;
-        
+
         let memory = create_test_memory("Access test memory");
         let id = memory.id;
         let original_count = memory.access_count;
-        
+
         store.insert(&memory).await.unwrap();
 
         tokio::time::sleep(std::time::Duration::from_millis(10)).await;
@@ -238,27 +252,33 @@ mod update_tests {
     #[tokio::test]
     async fn test_delete_existing_memory() {
         let (store, _dir) = create_test_store().await;
-        
+
         let memory = create_test_memory("To be deleted");
         let id = memory.id;
-        
+
         store.insert(&memory).await.unwrap();
         assert!(store.get(id).await.unwrap().is_some());
-        
+
         let deleted = store.delete(id).await.unwrap();
         assert!(deleted, "Delete should return true for existing memory");
-        
-        assert!(store.get(id).await.unwrap().is_none(), "Memory should be gone after delete");
+
+        assert!(
+            store.get(id).await.unwrap().is_none(),
+            "Memory should be gone after delete"
+        );
     }
 
     #[tokio::test]
     async fn test_delete_nonexistent_returns_false() {
         let (store, _dir) = create_test_store().await;
-        
+
         let nonexistent_id = Uuid::new_v4();
         let deleted = store.delete(nonexistent_id).await.unwrap();
-        
-        assert!(!deleted, "Delete should return false for nonexistent memory");
+
+        assert!(
+            !deleted,
+            "Delete should return false for nonexistent memory"
+        );
     }
 }
 
@@ -268,7 +288,7 @@ mod field_preservation_tests {
     #[tokio::test]
     async fn test_all_fields_preserved_in_roundtrip() {
         let (store, _dir) = create_test_store().await;
-        
+
         let mut memory = Memory::new(
             "Complete test memory".to_string(),
             vec![0.7; 384],
@@ -279,12 +299,12 @@ mod field_preservation_tests {
         memory.conversation_id = Some("test-conv-123".to_string());
         memory.tier = StorageTier::Warm;
         memory.compression = CompressionLevel::Summary;
-        
+
         let id = memory.id;
         store.insert(&memory).await.unwrap();
-        
+
         let retrieved = store.get(id).await.unwrap().unwrap();
-        
+
         assert_eq!(retrieved.id, memory.id);
         assert_eq!(retrieved.content, memory.content);
         assert_eq!(retrieved.memory_type, memory.memory_type);
@@ -298,13 +318,13 @@ mod field_preservation_tests {
     #[tokio::test]
     async fn test_different_memory_types_stored_correctly() {
         let (store, _dir) = create_test_store().await;
-        
+
         let types = vec![
             (MemoryType::Episodic, "Episodic memory"),
             (MemoryType::Semantic, "Semantic memory"),
             (MemoryType::Procedural, "Procedural memory"),
         ];
-        
+
         let mut ids = vec![];
         for (mem_type, content) in &types {
             let memory = create_memory_with_embedding(content, vec![0.5; 384], *mem_type);
@@ -312,7 +332,7 @@ mod field_preservation_tests {
             store.insert(&memory).await.unwrap();
             ids.push((id, *mem_type, content.to_string()));
         }
-        
+
         for (id, expected_type, expected_content) in ids {
             let retrieved = store.get(id).await.unwrap().unwrap();
             assert_eq!(retrieved.memory_type, expected_type);
@@ -323,14 +343,14 @@ mod field_preservation_tests {
     #[tokio::test]
     async fn test_different_sources_stored_correctly() {
         let (store, _dir) = create_test_store().await;
-        
+
         let sources = vec![
             (MemorySource::Conversation, "Conversation memory"),
             (MemorySource::File, "File memory"),
             (MemorySource::Web, "Web memory"),
             (MemorySource::Manual, "Manual memory"),
         ];
-        
+
         let mut ids = vec![];
         for (source, content) in &sources {
             let mut memory = create_test_memory(content);
@@ -339,7 +359,7 @@ mod field_preservation_tests {
             store.insert(&memory).await.unwrap();
             ids.push((id, *source));
         }
-        
+
         for (id, expected_source) in ids {
             let retrieved = store.get(id).await.unwrap().unwrap();
             assert_eq!(retrieved.source, expected_source);

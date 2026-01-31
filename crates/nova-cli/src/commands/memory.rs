@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use comfy_table::{presets::UTF8_FULL_CONDENSED, ContentArrangement, Table};
+use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
 use nova_memory::{
     memory::types::{Memory, MemorySource, MemoryType, StorageTier},
     storage::LanceStore,
@@ -7,7 +7,7 @@ use nova_memory::{
 use uuid::Uuid;
 
 use crate::error::CliResult;
-use crate::output::{format_timestamp, truncate_string, OutputFormat};
+use crate::output::{OutputFormat, format_timestamp, truncate_string};
 
 #[derive(Parser)]
 pub struct MemoryCommand {
@@ -32,10 +32,19 @@ pub enum MemorySubcommand {
 
 #[derive(Parser)]
 pub struct ListArgs {
-    #[clap(long, short, default_value = "20", help = "Maximum number of memories to display")]
+    #[clap(
+        long,
+        short,
+        default_value = "20",
+        help = "Maximum number of memories to display"
+    )]
     pub limit: usize,
 
-    #[clap(long, short, help = "Filter by memory type (episodic, semantic, procedural)")]
+    #[clap(
+        long,
+        short,
+        help = "Filter by memory type (episodic, semantic, procedural)"
+    )]
     pub r#type: Option<String>,
 }
 
@@ -56,7 +65,11 @@ pub struct AddArgs {
     #[clap(help = "Memory content text")]
     pub text: String,
 
-    #[clap(long, default_value = "semantic", help = "Memory type (episodic, semantic, procedural)")]
+    #[clap(
+        long,
+        default_value = "semantic",
+        help = "Memory type (episodic, semantic, procedural)"
+    )]
     pub r#type: String,
 }
 
@@ -75,7 +88,12 @@ impl MemoryCommand {
             Some("episodic") => Some(MemoryType::Episodic),
             Some("semantic") => Some(MemoryType::Semantic),
             Some("procedural") => Some(MemoryType::Procedural),
-            Some(t) => return Err(format!("Unknown memory type: {}. Use episodic, semantic, or procedural.", t).into()),
+            Some(t) => {
+                return Err(format!(
+                    "Unknown memory type: {t}. Use episodic, semantic, or procedural."
+                )
+                .into());
+            }
             None => None,
         };
 
@@ -96,14 +114,16 @@ impl MemoryCommand {
             OutputFormat::Json => {
                 let output: Vec<_> = memories
                     .iter()
-                    .map(|m| serde_json::json!({
-                        "id": m.id.to_string(),
-                        "content": &m.content,
-                        "type": format!("{:?}", m.memory_type),
-                        "weight": m.weight,
-                        "tier": format!("{:?}", m.tier),
-                        "created_at": m.created_at.to_rfc3339(),
-                    }))
+                    .map(|m| {
+                        serde_json::json!({
+                            "id": m.id.to_string(),
+                            "content": &m.content,
+                            "type": format!("{:?}", m.memory_type),
+                            "weight": m.weight,
+                            "tier": format!("{:?}", m.tier),
+                            "created_at": m.created_at.to_rfc3339(),
+                        })
+                    })
                     .collect();
                 println!("{}", serde_json::to_string_pretty(&output)?);
             }
@@ -139,10 +159,11 @@ impl MemoryCommand {
     }
 
     async fn show(store: &LanceStore, args: &ShowArgs, format: OutputFormat) -> CliResult<()> {
-        let id = Uuid::parse_str(&args.id)
-            .map_err(|e| format!("Invalid UUID format: {}", e))?;
+        let id = Uuid::parse_str(&args.id).map_err(|e| format!("Invalid UUID format: {e}"))?;
 
-        let memory = store.get(id).await?
+        let memory = store
+            .get(id)
+            .await?
             .ok_or_else(|| format!("Memory not found: {}", args.id))?;
 
         match format {
@@ -181,7 +202,10 @@ impl MemoryCommand {
                 table.add_row(["Created", &memory.created_at.to_rfc3339()]);
                 table.add_row(["Last Accessed", &memory.last_accessed.to_rfc3339()]);
                 table.add_row(["Access Count", &memory.access_count.to_string()]);
-                table.add_row(["Conversation ID", memory.conversation_id.as_deref().unwrap_or("-")]);
+                table.add_row([
+                    "Conversation ID",
+                    memory.conversation_id.as_deref().unwrap_or("-"),
+                ]);
                 table.add_row(["Entities", &memory.entities.join(", ")]);
                 table.add_row(["Embedding Size", &memory.embedding.len().to_string()]);
 
@@ -193,8 +217,7 @@ impl MemoryCommand {
     }
 
     async fn delete(store: &LanceStore, args: &DeleteArgs, format: OutputFormat) -> CliResult<()> {
-        let id = Uuid::parse_str(&args.id)
-            .map_err(|e| format!("Invalid UUID format: {}", e))?;
+        let id = Uuid::parse_str(&args.id).map_err(|e| format!("Invalid UUID format: {e}"))?;
 
         let deleted = store.delete(id).await?;
 
@@ -223,7 +246,12 @@ impl MemoryCommand {
             "episodic" => MemoryType::Episodic,
             "semantic" => MemoryType::Semantic,
             "procedural" => MemoryType::Procedural,
-            t => return Err(format!("Unknown memory type: {}. Use episodic, semantic, or procedural.", t).into()),
+            t => {
+                return Err(format!(
+                    "Unknown memory type: {t}. Use episodic, semantic, or procedural."
+                )
+                .into());
+            }
         };
 
         let mut embedding_model = nova_memory::embedding::EmbeddingModel::new()?;
@@ -249,7 +277,7 @@ impl MemoryCommand {
             }
             OutputFormat::Table => {
                 println!("Memory created successfully.");
-                println!("ID: {}", id);
+                println!("ID: {id}");
             }
         }
 

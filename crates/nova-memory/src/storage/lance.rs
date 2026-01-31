@@ -8,18 +8,16 @@ use arrow_array::{
 use arrow_schema::{DataType, Field, Schema, TimeUnit};
 use chrono::{TimeZone, Utc};
 use futures::TryStreamExt;
-use lancedb::connection::Connection;
-use lancedb::index::vector::IvfPqIndexBuilder;
-use lancedb::index::Index;
-use lancedb::query::{ExecutableQuery, QueryBase};
 use lancedb::Table;
+use lancedb::connection::Connection;
+use lancedb::index::Index;
+use lancedb::index::vector::IvfPqIndexBuilder;
+use lancedb::query::{ExecutableQuery, QueryBase};
 use uuid::Uuid;
 
 use crate::error::{NovaError, Result};
-use crate::memory::tombstone::{Tombstone, EvictionReason};
-use crate::memory::types::{
-    CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
-};
+use crate::memory::tombstone::{EvictionReason, Tombstone};
+use crate::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use crate::storage::filter::MemoryFilter;
 
 const EMBEDDING_DIMENSIONS: i32 = 384;
@@ -41,7 +39,7 @@ impl LanceStore {
         let connection = lancedb::connect(uri)
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to connect to LanceDB: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to connect to LanceDB: {e}")))?;
 
         Ok(Self {
             connection,
@@ -123,12 +121,9 @@ impl LanceStore {
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(Float32Array::from(empty_floats)),
                 Arc::new(
-                    TimestampMicrosecondArray::from(empty_timestamps.clone())
-                        .with_timezone("UTC"),
+                    TimestampMicrosecondArray::from(empty_timestamps.clone()).with_timezone("UTC"),
                 ),
-                Arc::new(
-                    TimestampMicrosecondArray::from(empty_timestamps).with_timezone("UTC"),
-                ),
+                Arc::new(TimestampMicrosecondArray::from(empty_timestamps).with_timezone("UTC")),
                 Arc::new(Int32Array::from(empty_ints)),
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings.clone())),
@@ -150,7 +145,7 @@ impl LanceStore {
             .create_table(MEMORIES_TABLE, Box::new(batches))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to create memories table: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to create memories table: {e}")))?;
 
         self.memories_table = Some(table);
         Ok(())
@@ -166,7 +161,7 @@ impl LanceStore {
             .create_table(TOMBSTONES_TABLE, Box::new(batches))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to create tombstones table: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to create tombstones table: {e}")))?;
 
         self.tombstones_table = Some(table);
         Ok(())
@@ -181,14 +176,12 @@ impl LanceStore {
             vec![
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(
-                    TimestampMicrosecondArray::from(empty_timestamps.clone())
-                        .with_timezone("UTC"),
+                    TimestampMicrosecondArray::from(empty_timestamps.clone()).with_timezone("UTC"),
                 ),
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(
-                    TimestampMicrosecondArray::from(empty_timestamps.clone())
-                        .with_timezone("UTC"),
+                    TimestampMicrosecondArray::from(empty_timestamps.clone()).with_timezone("UTC"),
                 ),
                 Arc::new(StringArray::from(empty_strings.clone())),
                 Arc::new(StringArray::from(empty_strings)),
@@ -198,14 +191,15 @@ impl LanceStore {
     }
 
     pub async fn create_vector_index(&self) -> Result<()> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let row_count = table
             .count_rows(None)
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to count rows: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to count rows: {e}")))?;
 
         // IVF-PQ requires at least 256 rows for training
         if row_count < 256 {
@@ -220,7 +214,7 @@ impl LanceStore {
             .create_index(&["embedding"], Index::IvfPq(ivf_pq))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to create vector index: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to create vector index: {e}")))?;
 
         Ok(())
     }
@@ -231,7 +225,7 @@ impl LanceStore {
             .open_table(MEMORIES_TABLE)
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to open memories table: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to open memories table: {e}")))?;
 
         self.memories_table = Some(table);
         Ok(())
@@ -243,7 +237,7 @@ impl LanceStore {
             .open_table(TOMBSTONES_TABLE)
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to open tombstones table: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to open tombstones table: {e}")))?;
 
         self.tombstones_table = Some(table);
         Ok(())
@@ -255,7 +249,7 @@ impl LanceStore {
             .table_names()
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to list tables: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to list tables: {e}")))?;
 
         Ok(names.contains(&name.to_string()))
     }
@@ -277,14 +271,14 @@ impl LanceStore {
     fn memories_to_batch(memories: &[Memory], schema: Arc<Schema>) -> Result<RecordBatch> {
         let ids: Vec<String> = memories.iter().map(|m| m.id.to_string()).collect();
         let id_refs: Vec<&str> = ids.iter().map(String::as_str).collect();
-        
+
         let contents: Vec<&str> = memories.iter().map(|m| m.content.as_str()).collect();
-        
+
         let embeddings: Vec<Option<Vec<Option<f32>>>> = memories
             .iter()
             .map(|m| Some(m.embedding.iter().map(|&v| Some(v)).collect()))
             .collect();
-        
+
         let memory_types: Vec<&str> = memories
             .iter()
             .map(|m| match m.memory_type {
@@ -293,26 +287,26 @@ impl LanceStore {
                 MemoryType::Procedural => "Procedural",
             })
             .collect();
-        
+
         let weights: Vec<f32> = memories.iter().map(|m| m.weight).collect();
-        
+
         let created_at: Vec<i64> = memories
             .iter()
             .map(|m| m.created_at.timestamp_micros())
             .collect();
-        
+
         let last_accessed: Vec<i64> = memories
             .iter()
             .map(|m| m.last_accessed.timestamp_micros())
             .collect();
-        
+
         let access_counts: Vec<i32> = memories.iter().map(|m| m.access_count as i32).collect();
-        
+
         let conversation_ids: Vec<Option<&str>> = memories
             .iter()
             .map(|m| m.conversation_id.as_deref())
             .collect();
-        
+
         let sources: Vec<&str> = memories
             .iter()
             .map(|m| match m.source {
@@ -322,7 +316,7 @@ impl LanceStore {
                 MemorySource::Manual => "Manual",
             })
             .collect();
-        
+
         let tiers: Vec<&str> = memories
             .iter()
             .map(|m| match m.tier {
@@ -331,7 +325,7 @@ impl LanceStore {
                 StorageTier::Cold => "Cold",
             })
             .collect();
-        
+
         let compressions: Vec<&str> = memories
             .iter()
             .map(|m| match m.compression {
@@ -342,10 +336,7 @@ impl LanceStore {
             })
             .collect();
 
-        let entities: Vec<String> = memories
-            .iter()
-            .map(|m| m.entities.join(","))
-            .collect();
+        let entities: Vec<String> = memories.iter().map(|m| m.entities.join(",")).collect();
         let entity_refs: Vec<&str> = entities.iter().map(String::as_str).collect();
 
         RecordBatch::try_new(
@@ -360,12 +351,8 @@ impl LanceStore {
                 >(embeddings, EMBEDDING_DIMENSIONS)),
                 Arc::new(StringArray::from(memory_types)),
                 Arc::new(Float32Array::from(weights)),
-                Arc::new(
-                    TimestampMicrosecondArray::from(created_at).with_timezone("UTC"),
-                ),
-                Arc::new(
-                    TimestampMicrosecondArray::from(last_accessed).with_timezone("UTC"),
-                ),
+                Arc::new(TimestampMicrosecondArray::from(created_at).with_timezone("UTC")),
+                Arc::new(TimestampMicrosecondArray::from(last_accessed).with_timezone("UTC")),
                 Arc::new(Int32Array::from(access_counts)),
                 Arc::new(StringArray::from(conversation_ids)),
                 Arc::new(StringArray::from(sources)),
@@ -374,7 +361,7 @@ impl LanceStore {
                 Arc::new(StringArray::from(entity_refs)),
             ],
         )
-        .map_err(|e| NovaError::Storage(format!("Failed to create RecordBatch: {}", e)))
+        .map_err(|e| NovaError::Storage(format!("Failed to create RecordBatch: {e}")))
     }
 
     /// Convert an Arrow RecordBatch row back to a Memory struct
@@ -384,67 +371,69 @@ impl LanceStore {
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get id column".to_string()))?;
-        
+
         let content_array = batch
             .column(1)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get content column".to_string()))?;
-        
+
         let embedding_array = batch
             .column(2)
             .as_any()
             .downcast_ref::<FixedSizeListArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get embedding column".to_string()))?;
-        
+
         let memory_type_array = batch
             .column(3)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get memory_type column".to_string()))?;
-        
+
         let weight_array = batch
             .column(4)
             .as_any()
             .downcast_ref::<Float32Array>()
             .ok_or_else(|| NovaError::Storage("Failed to get weight column".to_string()))?;
-        
+
         let created_at_array = batch
             .column(5)
             .as_any()
             .downcast_ref::<TimestampMicrosecondArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get created_at column".to_string()))?;
-        
+
         let last_accessed_array = batch
             .column(6)
             .as_any()
             .downcast_ref::<TimestampMicrosecondArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get last_accessed column".to_string()))?;
-        
+
         let access_count_array = batch
             .column(7)
             .as_any()
             .downcast_ref::<Int32Array>()
             .ok_or_else(|| NovaError::Storage("Failed to get access_count column".to_string()))?;
-        
+
         let conversation_id_array = batch
             .column(8)
             .as_any()
             .downcast_ref::<StringArray>()
-            .ok_or_else(|| NovaError::Storage("Failed to get conversation_id column".to_string()))?;
-        
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to get conversation_id column".to_string())
+            })?;
+
         let source_array = batch
             .column(9)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get source column".to_string()))?;
-        
+
         let tier_array = batch
             .column(10)
             .as_any()
             .downcast_ref::<StringArray>()
             .ok_or_else(|| NovaError::Storage("Failed to get tier column".to_string()))?;
-        
+
         let compression_array = batch
             .column(11)
             .as_any()
@@ -459,7 +448,7 @@ impl LanceStore {
 
         // Parse ID
         let id = Uuid::parse_str(id_array.value(row))
-            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {e}")))?;
 
         // Get content
         let content = content_array.value(row).to_string();
@@ -479,7 +468,7 @@ impl LanceStore {
             "Episodic" => MemoryType::Episodic,
             "Semantic" => MemoryType::Semantic,
             "Procedural" => MemoryType::Procedural,
-            other => return Err(NovaError::Storage(format!("Unknown memory type: {}", other))),
+            other => return Err(NovaError::Storage(format!("Unknown memory type: {other}"))),
         };
 
         // Get weight
@@ -489,12 +478,16 @@ impl LanceStore {
         let created_at = Utc
             .timestamp_micros(created_at_array.value(row))
             .single()
-            .ok_or_else(|| NovaError::Storage("Failed to parse created_at timestamp".to_string()))?;
-        
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to parse created_at timestamp".to_string())
+            })?;
+
         let last_accessed = Utc
             .timestamp_micros(last_accessed_array.value(row))
             .single()
-            .ok_or_else(|| NovaError::Storage("Failed to parse last_accessed timestamp".to_string()))?;
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to parse last_accessed timestamp".to_string())
+            })?;
 
         // Get access count
         let access_count = access_count_array.value(row) as u32;
@@ -517,7 +510,11 @@ impl LanceStore {
             "File" => MemorySource::File,
             "Web" => MemorySource::Web,
             "Manual" => MemorySource::Manual,
-            other => return Err(NovaError::Storage(format!("Unknown memory source: {}", other))),
+            other => {
+                return Err(NovaError::Storage(format!(
+                    "Unknown memory source: {other}"
+                )));
+            }
         };
 
         // Parse tier
@@ -525,7 +522,7 @@ impl LanceStore {
             "Hot" => StorageTier::Hot,
             "Warm" => StorageTier::Warm,
             "Cold" => StorageTier::Cold,
-            other => return Err(NovaError::Storage(format!("Unknown storage tier: {}", other))),
+            other => return Err(NovaError::Storage(format!("Unknown storage tier: {other}"))),
         };
 
         // Parse compression
@@ -534,7 +531,11 @@ impl LanceStore {
             "Summary" => CompressionLevel::Summary,
             "Keywords" => CompressionLevel::Keywords,
             "Hash" => CompressionLevel::Hash,
-            other => return Err(NovaError::Storage(format!("Unknown compression level: {}", other))),
+            other => {
+                return Err(NovaError::Storage(format!(
+                    "Unknown compression level: {other}"
+                )));
+            }
         };
 
         // Parse entities (comma-separated)
@@ -569,7 +570,10 @@ impl LanceStore {
 
     /// Convert multiple Tombstone structs to an Arrow RecordBatch
     fn tombstones_to_batch(tombstones: &[Tombstone], schema: Arc<Schema>) -> Result<RecordBatch> {
-        let original_ids: Vec<String> = tombstones.iter().map(|t| t.original_id.to_string()).collect();
+        let original_ids: Vec<String> = tombstones
+            .iter()
+            .map(|t| t.original_id.to_string())
+            .collect();
         let id_refs: Vec<&str> = original_ids.iter().map(String::as_str).collect();
 
         let evicted_at: Vec<i64> = tombstones
@@ -577,10 +581,7 @@ impl LanceStore {
             .map(|t| t.evicted_at.timestamp_micros())
             .collect();
 
-        let topics: Vec<String> = tombstones
-            .iter()
-            .map(|t| t.topics.join(","))
-            .collect();
+        let topics: Vec<String> = tombstones.iter().map(|t| t.topics.join(",")).collect();
         let topic_refs: Vec<&str> = topics.iter().map(String::as_str).collect();
 
         let participants: Vec<String> = tombstones
@@ -611,28 +612,22 @@ impl LanceStore {
                 _ => None,
             })
             .collect();
-        let reason_detail_refs: Vec<Option<&str>> = reason_details
-            .iter()
-            .map(|s| s.as_deref())
-            .collect();
+        let reason_detail_refs: Vec<Option<&str>> =
+            reason_details.iter().map(|s| s.as_deref()).collect();
 
         RecordBatch::try_new(
             schema,
             vec![
                 Arc::new(StringArray::from(id_refs)),
-                Arc::new(
-                    TimestampMicrosecondArray::from(evicted_at).with_timezone("UTC"),
-                ),
+                Arc::new(TimestampMicrosecondArray::from(evicted_at).with_timezone("UTC")),
                 Arc::new(StringArray::from(topic_refs)),
                 Arc::new(StringArray::from(participant_refs)),
-                Arc::new(
-                    TimestampMicrosecondArray::from(approximate_dates).with_timezone("UTC"),
-                ),
+                Arc::new(TimestampMicrosecondArray::from(approximate_dates).with_timezone("UTC")),
                 Arc::new(StringArray::from(reasons)),
                 Arc::new(StringArray::from(reason_detail_refs)),
             ],
         )
-        .map_err(|e| NovaError::Storage(format!("Failed to create tombstone RecordBatch: {}", e)))
+        .map_err(|e| NovaError::Storage(format!("Failed to create tombstone RecordBatch: {e}")))
     }
 
     /// Convert an Arrow RecordBatch row back to a Tombstone struct
@@ -665,7 +660,9 @@ impl LanceStore {
             .column(4)
             .as_any()
             .downcast_ref::<TimestampMicrosecondArray>()
-            .ok_or_else(|| NovaError::Storage("Failed to get approximate_date column".to_string()))?;
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to get approximate_date column".to_string())
+            })?;
 
         let reason_array = batch
             .column(5)
@@ -681,13 +678,15 @@ impl LanceStore {
 
         // Parse original_id
         let original_id = Uuid::parse_str(original_id_array.value(row))
-            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to parse UUID: {e}")))?;
 
         // Parse evicted_at
         let evicted_at = Utc
             .timestamp_micros(evicted_at_array.value(row))
             .single()
-            .ok_or_else(|| NovaError::Storage("Failed to parse evicted_at timestamp".to_string()))?;
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to parse evicted_at timestamp".to_string())
+            })?;
 
         // Parse topics (comma-separated)
         let topics_str = topics_array.value(row);
@@ -709,7 +708,9 @@ impl LanceStore {
         let approximate_date = Utc
             .timestamp_micros(approximate_date_array.value(row))
             .single()
-            .ok_or_else(|| NovaError::Storage("Failed to parse approximate_date timestamp".to_string()))?;
+            .ok_or_else(|| {
+                NovaError::Storage("Failed to parse approximate_date timestamp".to_string())
+            })?;
 
         // Parse reason
         let reason_str = reason_array.value(row);
@@ -725,15 +726,20 @@ impl LanceStore {
                 };
                 match details {
                     Some(by_str) => {
-                        let by = Uuid::parse_str(by_str)
-                            .map_err(|e| NovaError::Storage(format!("Failed to parse superseded by UUID: {}", e)))?;
+                        let by = Uuid::parse_str(by_str).map_err(|e| {
+                            NovaError::Storage(format!("Failed to parse superseded by UUID: {e}"))
+                        })?;
                         EvictionReason::Superseded { by }
                     }
                     None => EvictionReason::Superseded { by: Uuid::nil() },
                 }
             }
             "ManualDeletion" => EvictionReason::ManualDeletion,
-            other => return Err(NovaError::Storage(format!("Unknown eviction reason: {}", other))),
+            other => {
+                return Err(NovaError::Storage(format!(
+                    "Unknown eviction reason: {other}"
+                )));
+            }
         };
 
         Ok(Tombstone {
@@ -748,9 +754,10 @@ impl LanceStore {
 
     /// Insert a single tombstone into the store
     pub async fn insert_tombstone(&self, tombstone: &Tombstone) -> Result<()> {
-        let table = self.tombstones_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Tombstones table not initialized".to_string())
-        })?;
+        let table = self
+            .tombstones_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Tombstones table not initialized".to_string()))?;
 
         let schema = Self::tombstones_schema();
         let batch = Self::tombstone_to_batch(tombstone, schema.clone())?;
@@ -760,28 +767,29 @@ impl LanceStore {
             .add(Box::new(batches))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to insert tombstone: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to insert tombstone: {e}")))?;
 
         Ok(())
     }
 
     /// Get a tombstone by original memory ID
     pub async fn get_tombstone(&self, original_id: Uuid) -> Result<Option<Tombstone>> {
-        let table = self.tombstones_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Tombstones table not initialized".to_string())
-        })?;
+        let table = self
+            .tombstones_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Tombstones table not initialized".to_string()))?;
 
         let stream = table
             .query()
-            .only_if(format!("original_id = '{}'", original_id))
+            .only_if(format!("original_id = '{original_id}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to query tombstone: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to query tombstone: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {e}")))?;
 
         if batches.is_empty() {
             return Ok(None);
@@ -798,23 +806,24 @@ impl LanceStore {
 
     /// Search tombstones by topic (case-insensitive substring match)
     pub async fn search_tombstones_by_topic(&self, topic: &str) -> Result<Vec<Tombstone>> {
-        let table = self.tombstones_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Tombstones table not initialized".to_string())
-        })?;
+        let table = self
+            .tombstones_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Tombstones table not initialized".to_string()))?;
 
         // Use SQL LIKE for substring matching (case-insensitive)
         let pattern = format!("%{}%", topic.to_lowercase());
         let stream = table
             .query()
-            .only_if(format!("lower(topics) LIKE '{}'", pattern))
+            .only_if(format!("lower(topics) LIKE '{pattern}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to search tombstones: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to search tombstones: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {e}")))?;
 
         let mut tombstones = Vec::new();
         for batch in &batches {
@@ -829,20 +838,21 @@ impl LanceStore {
 
     /// List all tombstones
     pub async fn list_all_tombstones(&self) -> Result<Vec<Tombstone>> {
-        let table = self.tombstones_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Tombstones table not initialized".to_string())
-        })?;
+        let table = self
+            .tombstones_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Tombstones table not initialized".to_string()))?;
 
         let stream = table
             .query()
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to list tombstones: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to list tombstones: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect tombstones: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect tombstones: {e}")))?;
 
         let mut tombstones = Vec::new();
         for batch in &batches {
@@ -857,9 +867,10 @@ impl LanceStore {
 
     /// Insert a single memory into the store
     pub async fn insert(&self, memory: &Memory) -> Result<()> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let schema = Self::memories_schema();
         let batch = Self::memory_to_batch(memory, schema.clone())?;
@@ -869,7 +880,7 @@ impl LanceStore {
             .add(Box::new(batches))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to insert memory: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to insert memory: {e}")))?;
 
         Ok(())
     }
@@ -880,9 +891,10 @@ impl LanceStore {
             return Ok(());
         }
 
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let schema = Self::memories_schema();
         let batch = Self::memories_to_batch(memories, schema.clone())?;
@@ -892,28 +904,29 @@ impl LanceStore {
             .add(Box::new(batches))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to insert memories: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to insert memories: {e}")))?;
 
         Ok(())
     }
 
     /// Get a memory by ID
     pub async fn get(&self, id: Uuid) -> Result<Option<Memory>> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let stream = table
             .query()
-            .only_if(format!("id = '{}'", id))
+            .only_if(format!("id = '{id}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to query memory: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to query memory: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect query results: {e}")))?;
 
         if batches.is_empty() {
             return Ok(None);
@@ -931,18 +944,19 @@ impl LanceStore {
     /// Delete a memory by ID
     /// Returns true if a memory was deleted, false if not found
     pub async fn delete(&self, id: Uuid) -> Result<bool> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         // First check if the memory exists
         let exists = self.get(id).await?.is_some();
 
         if exists {
             table
-                .delete(&format!("id = '{}'", id))
+                .delete(&format!("id = '{id}'"))
                 .await
-                .map_err(|e| NovaError::Storage(format!("Failed to delete memory: {}", e)))?;
+                .map_err(|e| NovaError::Storage(format!("Failed to delete memory: {e}")))?;
         }
 
         Ok(exists)
@@ -950,29 +964,31 @@ impl LanceStore {
 
     /// Update access stats (increment count, update timestamp)
     pub async fn update_access(&self, id: Uuid) -> Result<()> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let now = Utc::now().timestamp_micros();
 
         table
             .update()
-            .only_if(format!("id = '{}'", id))
+            .only_if(format!("id = '{id}'"))
             .column("access_count", "access_count + 1")
-            .column("last_accessed", format!("{}", now))
+            .column("last_accessed", format!("{now}"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to update access: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to update access: {e}")))?;
 
         Ok(())
     }
 
     /// Update the storage tier of a memory
     pub async fn update_tier(&self, id: Uuid, tier: StorageTier) -> Result<()> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let tier_str = match tier {
             StorageTier::Hot => "Hot",
@@ -982,18 +998,19 @@ impl LanceStore {
 
         table
             .update()
-            .only_if(format!("id = '{}'", id))
-            .column("tier", format!("'{}'", tier_str))
+            .only_if(format!("id = '{id}'"))
+            .column("tier", format!("'{tier_str}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to update tier: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to update tier: {e}")))?;
 
         Ok(())
     }
 
     /// Search for similar memories using vector similarity (ANN search)
     pub async fn search(&self, embedding: &[f32], limit: usize) -> Result<Vec<Memory>> {
-        self.search_filtered(embedding, &MemoryFilter::default(), limit).await
+        self.search_filtered(embedding, &MemoryFilter::default(), limit)
+            .await
     }
 
     /// Search for similar memories with filter criteria
@@ -1003,14 +1020,15 @@ impl LanceStore {
         filter: &MemoryFilter,
         limit: usize,
     ) -> Result<Vec<Memory>> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let mut query = table
             .query()
             .nearest_to(embedding)
-            .map_err(|e| NovaError::Storage(format!("Failed to create vector query: {}", e)))?
+            .map_err(|e| NovaError::Storage(format!("Failed to create vector query: {e}")))?
             .limit(limit);
 
         if let Some(sql_filter) = filter.to_sql_clause() {
@@ -1020,12 +1038,12 @@ impl LanceStore {
         let stream = query
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to execute search: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to execute search: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect search results: {e}")))?;
 
         let mut memories = Vec::new();
         for batch in &batches {
@@ -1040,9 +1058,10 @@ impl LanceStore {
 
     /// List all memories in a specific storage tier
     pub async fn list_by_tier(&self, tier: StorageTier) -> Result<Vec<Memory>> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let tier_str = match tier {
             StorageTier::Hot => "Hot",
@@ -1052,15 +1071,15 @@ impl LanceStore {
 
         let stream = table
             .query()
-            .only_if(format!("tier = '{}'", tier_str))
+            .only_if(format!("tier = '{tier_str}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to query by tier: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to query by tier: {e}")))?;
 
         let batches: Vec<RecordBatch> = stream
             .try_collect()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to collect tier results: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to collect tier results: {e}")))?;
 
         let mut memories = Vec::new();
         for batch in &batches {
@@ -1075,9 +1094,10 @@ impl LanceStore {
 
     /// Count memories in a specific storage tier
     pub async fn count_by_tier(&self, tier: StorageTier) -> Result<usize> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let tier_str = match tier {
             StorageTier::Hot => "Hot",
@@ -1086,23 +1106,24 @@ impl LanceStore {
         };
 
         let count = table
-            .count_rows(Some(format!("tier = '{}'", tier_str)))
+            .count_rows(Some(format!("tier = '{tier_str}'")))
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to count by tier: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to count by tier: {e}")))?;
 
         Ok(count)
     }
 
     /// Get the total number of memories across all tiers
     pub async fn total_count(&self) -> Result<usize> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let count = table
             .count_rows(None)
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to count memories: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to count memories: {e}")))?;
 
         Ok(count)
     }
@@ -1114,9 +1135,10 @@ impl LanceStore {
         content: &str,
         compression: CompressionLevel,
     ) -> Result<()> {
-        let table = self.memories_table.as_ref().ok_or_else(|| {
-            NovaError::Storage("Memories table not initialized".to_string())
-        })?;
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| NovaError::Storage("Memories table not initialized".to_string()))?;
 
         let compression_str = match compression {
             CompressionLevel::Full => "Full",
@@ -1129,12 +1151,12 @@ impl LanceStore {
 
         table
             .update()
-            .only_if(format!("id = '{}'", id))
-            .column("content", format!("'{}'", escaped_content))
-            .column("compression", format!("'{}'", compression_str))
+            .only_if(format!("id = '{id}'"))
+            .column("content", format!("'{escaped_content}'"))
+            .column("compression", format!("'{compression_str}'"))
             .execute()
             .await
-            .map_err(|e| NovaError::Storage(format!("Failed to update compression: {}", e)))?;
+            .map_err(|e| NovaError::Storage(format!("Failed to update compression: {e}")))?;
 
         Ok(())
     }
@@ -1248,9 +1270,9 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let memories: Vec<Memory> = (0..3)
-                .map(|i| create_test_memory(&format!("Memory {}", i)))
+                .map(|i| create_test_memory(&format!("Memory {i}")))
                 .collect();
-            
+
             let ids: Vec<Uuid> = memories.iter().map(|m| m.id).collect();
 
             store.insert_batch(&memories).await.unwrap();
@@ -1258,7 +1280,7 @@ mod tests {
             for (i, id) in ids.iter().enumerate() {
                 let retrieved = store.get(*id).await.unwrap();
                 assert!(retrieved.is_some());
-                assert_eq!(retrieved.unwrap().content, format!("Memory {}", i));
+                assert_eq!(retrieved.unwrap().content, format!("Memory {i}"));
             }
         }
 
@@ -1283,7 +1305,7 @@ mod tests {
             let id = memory.id;
 
             store.insert(&memory).await.unwrap();
-            
+
             assert!(store.get(id).await.unwrap().is_some());
 
             let deleted = store.delete(id).await.unwrap();
@@ -1362,7 +1384,11 @@ mod tests {
     mod search {
         use super::*;
 
-        fn create_memory_with_embedding(content: &str, embedding: Vec<f32>, memory_type: MemoryType) -> Memory {
+        fn create_memory_with_embedding(
+            content: &str,
+            embedding: Vec<f32>,
+            memory_type: MemoryType,
+        ) -> Memory {
             Memory::new(
                 content.to_string(),
                 embedding,
@@ -1382,16 +1408,24 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
+
             let memories = vec![
-                create_memory_with_embedding("Similar 1", similar_embedding(&base_embedding, 0.01), MemoryType::Semantic),
-                create_memory_with_embedding("Similar 2", similar_embedding(&base_embedding, 0.02), MemoryType::Semantic),
+                create_memory_with_embedding(
+                    "Similar 1",
+                    similar_embedding(&base_embedding, 0.01),
+                    MemoryType::Semantic,
+                ),
+                create_memory_with_embedding(
+                    "Similar 2",
+                    similar_embedding(&base_embedding, 0.02),
+                    MemoryType::Semantic,
+                ),
                 create_memory_with_embedding("Different", vec![0.9; 384], MemoryType::Semantic),
             ];
             store.insert_batch(&memories).await.unwrap();
 
             let results = store.search(&base_embedding, 10).await.unwrap();
-            
+
             assert_eq!(results.len(), 3);
             assert!(results[0].content.starts_with("Similar"));
         }
@@ -1404,16 +1438,18 @@ mod tests {
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
             let memories: Vec<Memory> = (0..5)
-                .map(|i| create_memory_with_embedding(
-                    &format!("Memory {}", i),
-                    similar_embedding(&base_embedding, i as f32 * 0.01),
-                    MemoryType::Semantic,
-                ))
+                .map(|i| {
+                    create_memory_with_embedding(
+                        &format!("Memory {i}"),
+                        similar_embedding(&base_embedding, i as f32 * 0.01),
+                        MemoryType::Semantic,
+                    )
+                })
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
             let results = store.search(&base_embedding, 2).await.unwrap();
-            
+
             assert_eq!(results.len(), 2);
         }
 
@@ -1425,15 +1461,30 @@ mod tests {
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
             let memories = vec![
-                create_memory_with_embedding("Semantic 1", base_embedding.clone(), MemoryType::Semantic),
-                create_memory_with_embedding("Episodic 1", base_embedding.clone(), MemoryType::Episodic),
-                create_memory_with_embedding("Semantic 2", base_embedding.clone(), MemoryType::Semantic),
+                create_memory_with_embedding(
+                    "Semantic 1",
+                    base_embedding.clone(),
+                    MemoryType::Semantic,
+                ),
+                create_memory_with_embedding(
+                    "Episodic 1",
+                    base_embedding.clone(),
+                    MemoryType::Episodic,
+                ),
+                create_memory_with_embedding(
+                    "Semantic 2",
+                    base_embedding.clone(),
+                    MemoryType::Semantic,
+                ),
             ];
             store.insert_batch(&memories).await.unwrap();
 
             let filter = MemoryFilter::new().with_memory_types(vec![MemoryType::Semantic]);
-            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
-            
+            let results = store
+                .search_filtered(&base_embedding, &filter, 10)
+                .await
+                .unwrap();
+
             assert_eq!(results.len(), 2);
             for memory in &results {
                 assert_eq!(memory.memory_type, MemoryType::Semantic);
@@ -1447,19 +1498,30 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
-            let mut low_weight = create_memory_with_embedding("Low weight", base_embedding.clone(), MemoryType::Semantic);
+
+            let mut low_weight = create_memory_with_embedding(
+                "Low weight",
+                base_embedding.clone(),
+                MemoryType::Semantic,
+            );
             low_weight.weight = 0.3;
-            
-            let mut high_weight = create_memory_with_embedding("High weight", base_embedding.clone(), MemoryType::Semantic);
+
+            let mut high_weight = create_memory_with_embedding(
+                "High weight",
+                base_embedding.clone(),
+                MemoryType::Semantic,
+            );
             high_weight.weight = 0.8;
-            
+
             store.insert(&low_weight).await.unwrap();
             store.insert(&high_weight).await.unwrap();
 
             let filter = MemoryFilter::new().with_min_weight(0.5);
-            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
-            
+            let results = store
+                .search_filtered(&base_embedding, &filter, 10)
+                .await
+                .unwrap();
+
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].content, "High weight");
         }
@@ -1471,19 +1533,30 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
-            let mut conv_a = create_memory_with_embedding("Conv A", base_embedding.clone(), MemoryType::Episodic);
+
+            let mut conv_a = create_memory_with_embedding(
+                "Conv A",
+                base_embedding.clone(),
+                MemoryType::Episodic,
+            );
             conv_a.conversation_id = Some("conv-a".to_string());
-            
-            let mut conv_b = create_memory_with_embedding("Conv B", base_embedding.clone(), MemoryType::Episodic);
+
+            let mut conv_b = create_memory_with_embedding(
+                "Conv B",
+                base_embedding.clone(),
+                MemoryType::Episodic,
+            );
             conv_b.conversation_id = Some("conv-b".to_string());
-            
+
             store.insert(&conv_a).await.unwrap();
             store.insert(&conv_b).await.unwrap();
 
             let filter = MemoryFilter::new().with_conversation_id("conv-a".to_string());
-            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
-            
+            let results = store
+                .search_filtered(&base_embedding, &filter, 10)
+                .await
+                .unwrap();
+
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].conversation_id, Some("conv-a".to_string()));
         }
@@ -1495,26 +1568,38 @@ mod tests {
             store.create_memories_table().await.unwrap();
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
-            
-            let mut m1 = create_memory_with_embedding("Match", base_embedding.clone(), MemoryType::Semantic);
+
+            let mut m1 =
+                create_memory_with_embedding("Match", base_embedding.clone(), MemoryType::Semantic);
             m1.weight = 0.8;
             m1.conversation_id = Some("conv-1".to_string());
-            
-            let mut m2 = create_memory_with_embedding("Wrong type", base_embedding.clone(), MemoryType::Episodic);
+
+            let mut m2 = create_memory_with_embedding(
+                "Wrong type",
+                base_embedding.clone(),
+                MemoryType::Episodic,
+            );
             m2.weight = 0.8;
             m2.conversation_id = Some("conv-1".to_string());
-            
-            let mut m3 = create_memory_with_embedding("Low weight", base_embedding.clone(), MemoryType::Semantic);
+
+            let mut m3 = create_memory_with_embedding(
+                "Low weight",
+                base_embedding.clone(),
+                MemoryType::Semantic,
+            );
             m3.weight = 0.2;
             m3.conversation_id = Some("conv-1".to_string());
-            
+
             store.insert_batch(&[m1, m2, m3]).await.unwrap();
 
             let filter = MemoryFilter::new()
                 .with_memory_types(vec![MemoryType::Semantic])
                 .with_min_weight(0.5);
-            let results = store.search_filtered(&base_embedding, &filter, 10).await.unwrap();
-            
+            let results = store
+                .search_filtered(&base_embedding, &filter, 10)
+                .await
+                .unwrap();
+
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].content, "Match");
         }
@@ -1527,7 +1612,7 @@ mod tests {
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
             let results = store.search(&base_embedding, 10).await.unwrap();
-            
+
             assert!(results.is_empty());
         }
 
@@ -1539,11 +1624,13 @@ mod tests {
 
             let base_embedding: Vec<f32> = vec![0.5; 384];
             let memories: Vec<Memory> = (0..100)
-                .map(|i| create_memory_with_embedding(
-                    &format!("Memory {}", i),
-                    similar_embedding(&base_embedding, (i as f32) * 0.001),
-                    MemoryType::Semantic,
-                ))
+                .map(|i| {
+                    create_memory_with_embedding(
+                        &format!("Memory {i}"),
+                        similar_embedding(&base_embedding, (i as f32) * 0.001),
+                        MemoryType::Semantic,
+                    )
+                })
                 .collect();
             store.insert_batch(&memories).await.unwrap();
 
@@ -1551,13 +1638,16 @@ mod tests {
             let _results = store.search(&base_embedding, 10).await.unwrap();
             let elapsed = start.elapsed();
 
-            assert!(elapsed.as_millis() < 1000, "Search took too long: {:?}", elapsed);
+            assert!(
+                elapsed.as_millis() < 1000,
+                "Search took too long: {elapsed:?}"
+            );
         }
     }
 
     mod tombstones {
         use super::*;
-        use crate::memory::tombstone::{Tombstone, EvictionReason};
+        use crate::memory::tombstone::{EvictionReason, Tombstone};
 
         #[tokio::test]
         async fn test_create_and_open_tombstones_table() {
@@ -1650,7 +1740,10 @@ mod tests {
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].topics, vec!["rust", "systems-programming"]);
 
-            let results = store.search_tombstones_by_topic("nonexistent").await.unwrap();
+            let results = store
+                .search_tombstones_by_topic("nonexistent")
+                .await
+                .unwrap();
             assert!(results.is_empty());
         }
 
@@ -1661,13 +1754,15 @@ mod tests {
             store.create_tombstones_table().await.unwrap();
 
             let tombstones: Vec<Tombstone> = (0..3)
-                .map(|i| Tombstone::new(
-                    Uuid::new_v4(),
-                    vec![format!("topic-{}", i)],
-                    vec![],
-                    Utc::now(),
-                    EvictionReason::StoragePressure,
-                ))
+                .map(|i| {
+                    Tombstone::new(
+                        Uuid::new_v4(),
+                        vec![format!("topic-{}", i)],
+                        vec![],
+                        Utc::now(),
+                        EvictionReason::StoragePressure,
+                    )
+                })
                 .collect();
 
             for tombstone in &tombstones {

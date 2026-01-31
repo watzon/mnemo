@@ -166,7 +166,7 @@ mod tests {
             topics: vec![],
             entities: (0..entities_count)
                 .map(|i| crate::router::Entity {
-                    text: format!("entity{}", i),
+                    text: format!("entity{i}"),
                     label: crate::router::EntityLabel::Person,
                     confidence: 0.9,
                 })
@@ -203,7 +203,7 @@ mod tests {
         let weight = calculate_initial_weight(&router_output, MemorySource::Conversation);
         assert!(weight > 0.0, "Initial weight should be positive");
         assert!(
-            weight >= 0.1 && weight <= 1.0,
+            (0.1..=1.0).contains(&weight),
             "Weight should be clamped to [0.1, 1.0]"
         );
     }

@@ -27,7 +27,7 @@ impl EmbeddingModel {
 
     pub fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>, NovaError> {
         self.model
-            .embed(texts.to_vec(), None)
+            .embed(texts, None)
             .map_err(|e| NovaError::Embedding(e.to_string()))
     }
 }
@@ -57,8 +57,7 @@ mod tests {
         assert_eq!(
             embedding.len(),
             EMBEDDING_DIMENSION,
-            "Embedding dimension should be {}",
-            EMBEDDING_DIMENSION
+            "Embedding dimension should be {EMBEDDING_DIMENSION}"
         );
     }
 
@@ -79,14 +78,11 @@ mod tests {
 
         assert!(
             sim_similar > sim_different,
-            "Similar texts ({:.3}) should have higher similarity than different texts ({:.3})",
-            sim_similar,
-            sim_different
+            "Similar texts ({sim_similar:.3}) should have higher similarity than different texts ({sim_different:.3})"
         );
         assert!(
             sim_similar > 0.8,
-            "Similar texts should have similarity > 0.8, got {:.3}",
-            sim_similar
+            "Similar texts should have similarity > 0.8, got {sim_similar:.3}"
         );
     }
 
@@ -104,8 +100,7 @@ mod tests {
             assert_eq!(
                 emb.len(),
                 EMBEDDING_DIMENSION,
-                "Each embedding should have dimension {}",
-                EMBEDDING_DIMENSION
+                "Each embedding should have dimension {EMBEDDING_DIMENSION}"
             );
         }
     }

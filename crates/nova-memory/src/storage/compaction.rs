@@ -190,7 +190,7 @@ impl<'a> Compactor<'a> {
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         if memory.weight >= self.config.min_weight_to_preserve {
             return Ok(false);
@@ -227,7 +227,7 @@ impl<'a> Compactor<'a> {
     /// by whitespace or end of string.
     fn compress_to_summary(&self, content: &str) -> String {
         let sentences: Vec<&str> = content
-            .split(|c| c == '.' || c == '!' || c == '?')
+            .split(['.', '!', '?'])
             .filter(|s| !s.trim().is_empty())
             .take(self.config.summary_max_sentences)
             .collect();
@@ -235,7 +235,7 @@ impl<'a> Compactor<'a> {
         if sentences.is_empty() {
             let truncated: String = content.chars().take(200).collect();
             if truncated.len() < content.len() {
-                format!("{}...", truncated)
+                format!("{truncated}...")
             } else {
                 truncated
             }
@@ -256,11 +256,11 @@ impl<'a> Compactor<'a> {
             "by", "from", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
             "do", "does", "did", "will", "would", "could", "should", "may", "might", "must",
             "this", "that", "these", "those", "it", "its", "they", "them", "their", "we", "you",
-            "your", "our", "i", "me", "my", "he", "she", "his", "her", "not", "no", "yes",
-            "what", "which", "who", "when", "where", "why", "how", "all", "each", "every",
-            "both", "few", "more", "most", "other", "some", "such", "than", "too", "very",
-            "just", "also", "only", "then", "there", "here", "now", "about", "into", "over",
-            "after", "before", "between", "under", "again", "further", "once", "during",
+            "your", "our", "i", "me", "my", "he", "she", "his", "her", "not", "no", "yes", "what",
+            "which", "who", "when", "where", "why", "how", "all", "each", "every", "both", "few",
+            "more", "most", "other", "some", "such", "than", "too", "very", "just", "also", "only",
+            "then", "there", "here", "now", "about", "into", "over", "after", "before", "between",
+            "under", "again", "further", "once", "during",
         ]
         .into_iter()
         .collect();
@@ -369,9 +369,9 @@ mod tests {
         fn test_compress_to_summary_multiple_sentences() {
             let config = CompactionConfig::default();
             let content = "This is the first sentence. Here is the second sentence. And a third one. Fourth sentence here. Fifth sentence.";
-            
+
             let sentences: Vec<&str> = content
-                .split(|c| c == '.' || c == '!' || c == '?')
+                .split(['.', '!', '?'])
                 .filter(|s| !s.trim().is_empty())
                 .take(config.summary_max_sentences)
                 .collect();
@@ -389,7 +389,7 @@ mod tests {
             let content = "Just one sentence here.";
 
             let sentences: Vec<&str> = content
-                .split(|c| c == '.' || c == '!' || c == '?')
+                .split(['.', '!', '?'])
                 .filter(|s| !s.trim().is_empty())
                 .take(config.summary_max_sentences)
                 .collect();
@@ -404,7 +404,7 @@ mod tests {
             let content = "This is a long text without any sentence-ending punctuation that goes on and on and on and on and on";
 
             let sentences: Vec<&str> = content
-                .split(|c| c == '.' || c == '!' || c == '?')
+                .split(['.', '!', '?'])
                 .filter(|s| !s.trim().is_empty())
                 .take(config.summary_max_sentences)
                 .collect();
@@ -412,7 +412,7 @@ mod tests {
             if sentences.is_empty() || (sentences.len() == 1 && sentences[0] == content) {
                 let truncated: String = content.chars().take(200).collect();
                 let result = if truncated.len() < content.len() {
-                    format!("{}...", truncated)
+                    format!("{truncated}...")
                 } else {
                     truncated
                 };
@@ -423,12 +423,13 @@ mod tests {
         #[test]
         fn test_compress_to_keywords_extracts_significant_words() {
             let config = CompactionConfig::default();
-            let content = "The database connection failed because the server configuration was incorrect.";
+            let content =
+                "The database connection failed because the server configuration was incorrect.";
 
             let stop_words: std::collections::HashSet<&str> = [
                 "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
-                "by", "from", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had",
-                "because",
+                "by", "from", "is", "are", "was", "were", "be", "been", "being", "have", "has",
+                "had", "because",
             ]
             .into_iter()
             .collect();
@@ -461,11 +462,10 @@ mod tests {
             let config = CompactionConfig::default();
             let content = "I am a big fan of the API and SDK tools";
 
-            let stop_words: std::collections::HashSet<&str> = [
-                "the", "a", "an", "and", "or", "of", "i", "am",
-            ]
-            .into_iter()
-            .collect();
+            let stop_words: std::collections::HashSet<&str> =
+                ["the", "a", "an", "and", "or", "of", "i", "am"]
+                    .into_iter()
+                    .collect();
 
             let mut seen = std::collections::HashSet::new();
             let keywords: Vec<String> = content
@@ -491,8 +491,7 @@ mod tests {
         fn test_compress_to_keywords_removes_duplicates() {
             let content = "The server server server crashed and the server restarted";
 
-            let stop_words: std::collections::HashSet<&str> =
-                ["the", "and"].into_iter().collect();
+            let stop_words: std::collections::HashSet<&str> = ["the", "and"].into_iter().collect();
             let config = CompactionConfig::default();
 
             let mut seen = std::collections::HashSet::new();

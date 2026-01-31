@@ -1,7 +1,7 @@
 use std::path::Path;
 
 use clap::Parser;
-use comfy_table::{presets::UTF8_FULL_CONDENSED, ContentArrangement, Table};
+use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
 use nova_memory::config::Config;
 
 use crate::error::CliResult;
@@ -29,9 +29,9 @@ impl ConfigCommand {
     async fn show(config_path: Option<&Path>, format: OutputFormat) -> CliResult<()> {
         let config = if let Some(path) = config_path {
             let content = std::fs::read_to_string(path)
-                .map_err(|e| format!("Failed to read config file: {}", e))?;
+                .map_err(|e| format!("Failed to read config file: {e}"))?;
             toml::from_str::<Config>(&content)
-                .map_err(|e| format!("Failed to parse config file: {}", e))?
+                .map_err(|e| format!("Failed to parse config file: {e}"))?
         } else {
             Config::default()
         };
@@ -81,7 +81,10 @@ impl ConfigCommand {
                     .set_header(["Setting", "Value"]);
 
                 storage_table.add_row(["hot_cache_gb", &config.storage.hot_cache_gb.to_string()]);
-                storage_table.add_row(["warm_storage_gb", &config.storage.warm_storage_gb.to_string()]);
+                storage_table.add_row([
+                    "warm_storage_gb",
+                    &config.storage.warm_storage_gb.to_string(),
+                ]);
                 storage_table.add_row(["cold_enabled", &config.storage.cold_enabled.to_string()]);
                 storage_table.add_row(["data_dir", &config.storage.data_dir.display().to_string()]);
 
@@ -95,9 +98,19 @@ impl ConfigCommand {
                     .set_header(["Setting", "Value"]);
 
                 proxy_table.add_row(["listen_addr", &config.proxy.listen_addr]);
-                proxy_table.add_row(["upstream_url", if config.proxy.upstream_url.is_empty() { "(not set)" } else { &config.proxy.upstream_url }]);
+                proxy_table.add_row([
+                    "upstream_url",
+                    if config.proxy.upstream_url.is_empty() {
+                        "(not set)"
+                    } else {
+                        &config.proxy.upstream_url
+                    },
+                ]);
                 proxy_table.add_row(["timeout_secs", &config.proxy.timeout_secs.to_string()]);
-                proxy_table.add_row(["max_injection_tokens", &config.proxy.max_injection_tokens.to_string()]);
+                proxy_table.add_row([
+                    "max_injection_tokens",
+                    &config.proxy.max_injection_tokens.to_string(),
+                ]);
 
                 println!("{proxy_table}\n");
 
@@ -108,9 +121,19 @@ impl ConfigCommand {
                     .set_content_arrangement(ContentArrangement::Dynamic)
                     .set_header(["Setting", "Value"]);
 
-                router_table.add_row(["strategy", if config.router.strategy.is_empty() { "(not set)" } else { &config.router.strategy }]);
+                router_table.add_row([
+                    "strategy",
+                    if config.router.strategy.is_empty() {
+                        "(not set)"
+                    } else {
+                        &config.router.strategy
+                    },
+                ]);
                 router_table.add_row(["max_memories", &config.router.max_memories.to_string()]);
-                router_table.add_row(["relevance_threshold", &config.router.relevance_threshold.to_string()]);
+                router_table.add_row([
+                    "relevance_threshold",
+                    &config.router.relevance_threshold.to_string(),
+                ]);
 
                 println!("{router_table}\n");
 
@@ -121,8 +144,22 @@ impl ConfigCommand {
                     .set_content_arrangement(ContentArrangement::Dynamic)
                     .set_header(["Setting", "Value"]);
 
-                embedding_table.add_row(["provider", if config.embedding.provider.is_empty() { "(not set)" } else { &config.embedding.provider }]);
-                embedding_table.add_row(["model", if config.embedding.model.is_empty() { "(not set)" } else { &config.embedding.model }]);
+                embedding_table.add_row([
+                    "provider",
+                    if config.embedding.provider.is_empty() {
+                        "(not set)"
+                    } else {
+                        &config.embedding.provider
+                    },
+                ]);
+                embedding_table.add_row([
+                    "model",
+                    if config.embedding.model.is_empty() {
+                        "(not set)"
+                    } else {
+                        &config.embedding.model
+                    },
+                ]);
                 embedding_table.add_row(["dimension", &config.embedding.dimension.to_string()]);
                 embedding_table.add_row(["batch_size", &config.embedding.batch_size.to_string()]);
 

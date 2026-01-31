@@ -3,7 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
-use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
+use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use nova_memory::config::Config;
 use nova_memory::embedding::EmbeddingModel;
@@ -37,7 +37,7 @@ pub enum Command {
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }
@@ -72,9 +72,8 @@ fn load_config(config_path: Option<PathBuf>) -> Result<Config> {
                 e
             ))
         })?;
-        let config: Config = toml::from_str(&content).map_err(|e| {
-            nova_memory::NovaError::Config(format!("Failed to parse config: {}", e))
-        })?;
+        let config: Config = toml::from_str(&content)
+            .map_err(|e| nova_memory::NovaError::Config(format!("Failed to parse config: {e}")))?;
         Ok(config)
     } else {
         let default_paths = [
@@ -94,7 +93,7 @@ fn load_config(config_path: Option<PathBuf>) -> Result<Config> {
                     ))
                 })?;
                 let config: Config = toml::from_str(&content).map_err(|e| {
-                    nova_memory::NovaError::Config(format!("Failed to parse config: {}", e))
+                    nova_memory::NovaError::Config(format!("Failed to parse config: {e}"))
                 })?;
                 return Ok(config);
             }

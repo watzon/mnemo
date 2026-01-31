@@ -42,7 +42,7 @@ pub enum Command {
 #[tokio::main]
 async fn main() {
     if let Err(e) = run().await {
-        eprintln!("Error: {}", e);
+        eprintln!("Error: {e}");
         std::process::exit(1);
     }
 }
@@ -63,9 +63,7 @@ async fn run() -> CliResult<()> {
     });
 
     match &cli.command {
-        Command::Config(cmd) => {
-            cmd.execute(cli.config.as_deref(), format).await
-        }
+        Command::Config(cmd) => cmd.execute(cli.config.as_deref(), format).await,
         Command::Memory(_) | Command::Stats(_) | Command::Compact(_) => {
             let mut store = LanceStore::connect(&data_dir).await?;
 

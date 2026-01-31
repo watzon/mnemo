@@ -11,8 +11,8 @@ pub mod ner;
 
 pub use ner::{Entity, EntityLabel, NerModel};
 
-use crate::memory::types::MemoryType;
 use crate::NovaError;
+use crate::memory::types::MemoryType;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -337,10 +337,10 @@ impl MemoryRouter {
         }
 
         // Person entities suggest episodic memories
-        if entities.iter().any(|e| e.label == EntityLabel::Person) {
-            if !types.contains(&MemoryType::Episodic) {
-                types.push(MemoryType::Episodic);
-            }
+        if entities.iter().any(|e| e.label == EntityLabel::Person)
+            && !types.contains(&MemoryType::Episodic)
+        {
+            types.push(MemoryType::Episodic);
         }
 
         // If no specific type detected, default to Episodic and Semantic

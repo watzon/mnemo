@@ -2,7 +2,7 @@ use serde::Deserialize;
 use std::path::PathBuf;
 
 /// Main configuration structure for Nova Memory
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Default)]
 pub struct Config {
     /// Storage configuration (hot/warm/cold tiers)
     #[serde(default)]
@@ -16,17 +16,6 @@ pub struct Config {
     /// Embedding model configuration
     #[serde(default)]
     pub embedding: EmbeddingConfig,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            storage: StorageConfig::default(),
-            proxy: ProxyConfig::default(),
-            router: RouterConfig::default(),
-            embedding: EmbeddingConfig::default(),
-        }
-    }
 }
 
 /// Storage tier configuration

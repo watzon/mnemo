@@ -10,11 +10,11 @@
 //! `cargo test -p nova-memory --test integration_test -- --test-threads=1`
 
 use axum::{
+    Json, Router,
     body::Body,
     http::{Request, StatusCode},
     response::IntoResponse,
     routing::{get, post},
-    Json, Router,
 };
 use chrono::{Duration, Utc};
 use serde_json::json;
@@ -26,13 +26,13 @@ use nova_memory::memory::ingestion::IngestionPipeline;
 use nova_memory::memory::retrieval::{RetrievalPipeline, RetrievedMemory};
 use nova_memory::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use nova_memory::proxy::{
-    estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
-    ResponseCapture, SseEvent, StreamingProxy,
+    ResponseCapture, SseEvent, StreamingProxy, estimate_tokens, extract_user_query,
+    format_memory_block, inject_memories, truncate_to_budget,
 };
+use nova_memory::storage::LanceStore;
 use nova_memory::storage::compaction::Compactor;
 use nova_memory::storage::eviction::{CapacityStatus, EvictionConfig, Evictor};
 use nova_memory::storage::tiers::TierManager;
-use nova_memory::storage::LanceStore;
 
 // =============================================================================
 // Test Fixtures and Helpers
@@ -138,7 +138,8 @@ fn generate_mock_sse_response(content: &str) -> String {
 
 /// Mock handler that returns a streaming SSE response
 async fn mock_chat_completions() -> impl IntoResponse {
-    let content = "The capital of France is Paris. It is a beautiful city with many historic landmarks.";
+    let content =
+        "The capital of France is Paris. It is a beautiful city with many historic landmarks.";
     let sse_response = generate_mock_sse_response(content);
 
     (
@@ -204,8 +205,7 @@ mod full_proxy_flow_tests {
         assert!(count >= 3, "Should have at least 3 memories ingested");
 
         let mut embedding_model = EmbeddingModel::new().expect("Failed to create embedding model");
-        let mut retrieval =
-            RetrievalPipeline::with_defaults(&store, &mut embedding_model);
+        let mut retrieval = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
 
         let results = retrieval
             .retrieve("What programming language does the user prefer?", 5)
@@ -218,9 +218,7 @@ mod full_proxy_flow_tests {
         );
 
         // Verify retrieval found the Rust-related memory
-        let rust_memory = results
-            .iter()
-            .find(|r| r.memory.content.contains("Rust"));
+        let rust_memory = results.iter().find(|r| r.memory.content.contains("Rust"));
         assert!(rust_memory.is_some(), "Should find the Rust memory");
 
         // Step 3: Format memories for injection
@@ -274,7 +272,8 @@ mod full_proxy_flow_tests {
     async fn test_response_capture_and_ingestion() {
         let (store, _temp_dir) = create_test_store().await;
 
-        let content = "Python is excellent for data science because of libraries like NumPy and Pandas.";
+        let content =
+            "Python is excellent for data science because of libraries like NumPy and Pandas.";
         let sse_data = generate_mock_sse_response(content);
 
         let extracted = StreamingProxy::extract_response_content(&sse_data);
@@ -295,7 +294,10 @@ mod full_proxy_flow_tests {
             .await
             .unwrap();
 
-        assert!(result.is_some(), "Should successfully ingest captured content");
+        assert!(
+            result.is_some(),
+            "Should successfully ingest captured content"
+        );
         let memory = result.unwrap();
         assert_eq!(memory.memory_type, MemoryType::Episodic);
         assert_eq!(memory.tier, StorageTier::Hot);
@@ -366,7 +368,7 @@ mod memory_injection_tests {
         let memories: Vec<RetrievedMemory> = (0..10)
             .map(|i| {
                 create_retrieved_memory(
-                    &format!("This is memory number {} with some content.", i),
+                    &format!("This is memory number {i} with some content."),
                     MemoryType::Semantic,
                 )
             })
@@ -381,7 +383,11 @@ mod memory_injection_tests {
 
         // Large budget should keep all
         let all = truncate_to_budget(&memories, 10000);
-        assert_eq!(all.len(), memories.len(), "Should keep all with large budget");
+        assert_eq!(
+            all.len(),
+            memories.len(),
+            "Should keep all with large budget"
+        );
     }
 
     /// Test memory block XML formatting
@@ -421,7 +427,10 @@ mod memory_injection_tests {
                 {"role": "user", "content": "What is Rust?"}
             ]
         });
-        assert_eq!(extract_user_query(&simple), Some("What is Rust?".to_string()));
+        assert_eq!(
+            extract_user_query(&simple),
+            Some("What is Rust?".to_string())
+        );
 
         // Multi-turn conversation
         let multi_turn = json!({
@@ -505,7 +514,10 @@ mod ingestion_tests {
             .ingest("   \n\t  ", MemorySource::Manual, None)
             .await
             .unwrap();
-        assert!(whitespace.is_none(), "Should filter whitespace-only content");
+        assert!(
+            whitespace.is_none(),
+            "Should filter whitespace-only content"
+        );
 
         // Too short
         let short = pipeline
@@ -565,7 +577,7 @@ mod capacity_management_tests {
     /// Test tier migration (Hot -> Warm -> Cold)
     #[tokio::test]
     async fn test_tier_migration() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         let memory = create_test_memory("Memory for tier migration", MemoryType::Semantic);
         let id = memory.id;
@@ -600,7 +612,7 @@ mod capacity_management_tests {
     /// Test compaction based on age
     #[tokio::test]
     async fn test_compaction_by_age() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         let old_memory = create_memory_with_age(
             "First sentence here. Second sentence with more content. Third sentence adds detail. Fourth adds extra. Fifth is final.",
@@ -627,10 +639,11 @@ mod capacity_management_tests {
     /// Test that high-weight memories are not compacted
     #[tokio::test]
     async fn test_compaction_preserves_high_weight() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         // Create high-weight old memory
-        let mut memory = create_memory_with_age("Important high-weight memory.", 45, StorageTier::Warm);
+        let mut memory =
+            create_memory_with_age("Important high-weight memory.", 45, StorageTier::Warm);
         memory.weight = 0.9; // Above default 0.7 threshold
         let id = memory.id;
         store.insert(&memory).await.unwrap();
@@ -648,7 +661,7 @@ mod capacity_management_tests {
     /// Test eviction when capacity threshold is exceeded
     #[tokio::test]
     async fn test_eviction_at_capacity() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         // Configure small capacity for testing
         let config = EvictionConfig {
@@ -656,15 +669,15 @@ mod capacity_management_tests {
             eviction_threshold: 0.80,
             warning_threshold: 0.70,
             aggressive_threshold: 0.95,
-            recent_access_hours: 1,     // Short window
-            min_weight_protected: 0.9,  // High threshold
+            recent_access_hours: 1,    // Short window
+            min_weight_protected: 0.9, // High threshold
         };
         let evictor = Evictor::with_config(&store, config);
 
         // Insert 9 memories (90% capacity -> eviction needed)
         for i in 0..9 {
             let mut memory = create_test_memory(
-                &format!("Evictable memory number {}", i),
+                &format!("Evictable memory number {i}"),
                 MemoryType::Semantic,
             );
             memory.weight = 0.1 + (i as f32) * 0.05; // Low weights
@@ -689,7 +702,7 @@ mod capacity_management_tests {
     /// Test that protected memories are not evicted
     #[tokio::test]
     async fn test_eviction_protects_high_weight() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         let config = EvictionConfig {
             max_memories_per_tier: 10,
@@ -706,10 +719,8 @@ mod capacity_management_tests {
 
         // High-weight protected memories
         for i in 0..3 {
-            let mut memory = create_test_memory(
-                &format!("Protected high-weight {}", i),
-                MemoryType::Semantic,
-            );
+            let mut memory =
+                create_test_memory(&format!("Protected high-weight {i}"), MemoryType::Semantic);
             memory.weight = 0.8;
             memory.last_accessed = Utc::now() - Duration::hours(48);
             memory.tier = StorageTier::Hot;
@@ -719,10 +730,8 @@ mod capacity_management_tests {
 
         // Low-weight evictable memories
         for i in 0..6 {
-            let mut memory = create_test_memory(
-                &format!("Evictable low-weight {}", i),
-                MemoryType::Semantic,
-            );
+            let mut memory =
+                create_test_memory(&format!("Evictable low-weight {i}"), MemoryType::Semantic);
             memory.weight = 0.2;
             memory.last_accessed = Utc::now() - Duration::hours(48);
             memory.tier = StorageTier::Hot;
@@ -752,7 +761,7 @@ mod capacity_management_tests {
     /// Test tombstone creation on eviction
     #[tokio::test]
     async fn test_eviction_creates_tombstones() {
-        let (mut store, _temp_dir) = create_test_store().await;
+        let (store, _temp_dir) = create_test_store().await;
 
         let config = EvictionConfig {
             max_memories_per_tier: 10,
@@ -766,10 +775,8 @@ mod capacity_management_tests {
 
         // Insert memories with entities
         for i in 0..9 {
-            let mut memory = create_test_memory(
-                &format!("Memory about topic-{}", i),
-                MemoryType::Semantic,
-            );
+            let mut memory =
+                create_test_memory(&format!("Memory about topic-{i}"), MemoryType::Semantic);
             memory.weight = 0.1;
             memory.last_accessed = Utc::now() - Duration::hours(48);
             memory.tier = StorageTier::Hot;
@@ -813,7 +820,9 @@ mod response_capture_tests {
     /// Test that should_ingest filters error responses
     #[test]
     fn test_should_ingest_filters_errors() {
-        assert!(!ResponseCapture::should_ingest("Error: Something went wrong"));
+        assert!(!ResponseCapture::should_ingest(
+            "Error: Something went wrong"
+        ));
         assert!(!ResponseCapture::should_ingest("error: invalid input"));
         assert!(!ResponseCapture::should_ingest("ERROR: Connection failed"));
     }
@@ -883,7 +892,7 @@ mod token_estimation_tests {
         let memories: Vec<RetrievedMemory> = (0..5)
             .map(|i| {
                 create_retrieved_memory(
-                    &format!("Memory {} with some content here.", i),
+                    &format!("Memory {i} with some content here."),
                     MemoryType::Semantic,
                 )
             })
@@ -927,7 +936,11 @@ mod full_pipeline_tests {
 
         for content in &memories_to_ingest {
             let result = ingestion
-                .ingest(content, MemorySource::Conversation, Some("test-conv".to_string()))
+                .ingest(
+                    content,
+                    MemorySource::Conversation,
+                    Some("test-conv".to_string()),
+                )
                 .await;
             assert!(result.is_ok() && result.unwrap().is_some());
         }
@@ -960,7 +973,8 @@ mod full_pipeline_tests {
         assert!(system_msg.contains("VS Code"));
 
         // Phase 4: Simulate response and capture
-        let response_content = "Based on your preferences, I recommend using VS Code for development.";
+        let response_content =
+            "Based on your preferences, I recommend using VS Code for development.";
         let sse_response = generate_mock_sse_response(response_content);
 
         // Parse and verify capture would work

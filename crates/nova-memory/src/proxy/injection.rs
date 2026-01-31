@@ -137,7 +137,7 @@ pub fn inject_memories(
             let new_content = if current_content.is_empty() {
                 memory_block
             } else {
-                format!("{}\n\n{}", current_content, memory_block)
+                format!("{current_content}\n\n{memory_block}")
             };
 
             system_msg["content"] = Value::String(new_content);

@@ -4,10 +4,10 @@
 //! and error handling behavior.
 
 use axum::{
+    Json, Router,
     body::Body,
     http::{Request, StatusCode},
     routing::get,
-    Json, Router,
 };
 use tower::ServiceExt;
 
@@ -357,10 +357,12 @@ mod memory_injection_tests {
         assert_eq!(messages.len(), 2);
         // First should be system
         assert_eq!(messages[0]["role"], "system");
-        assert!(messages[0]["content"]
-            .as_str()
-            .unwrap()
-            .contains("<nova-memories>"));
+        assert!(
+            messages[0]["content"]
+                .as_str()
+                .unwrap()
+                .contains("<nova-memories>")
+        );
         // Second should be user
         assert_eq!(messages[1]["role"], "user");
     }

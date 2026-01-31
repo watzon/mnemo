@@ -406,7 +406,7 @@ mod edge_case_tests {
     #[test]
     fn test_parse_very_long_content() {
         let long_content = "x".repeat(10000);
-        let raw = format!("data: {}\n\n", long_content);
+        let raw = format!("data: {long_content}\n\n");
         let events = StreamingProxy::parse_sse_events(&raw);
 
         assert_eq!(events.len(), 1);

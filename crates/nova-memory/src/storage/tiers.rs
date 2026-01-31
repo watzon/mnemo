@@ -32,7 +32,11 @@ impl Default for TierConfig {
 
 impl TierConfig {
     /// Create a new tier configuration with custom values
-    pub fn new(hot_threshold_gb: u64, warm_threshold_gb: u64, access_promote_threshold: u32) -> Self {
+    pub fn new(
+        hot_threshold_gb: u64,
+        warm_threshold_gb: u64,
+        access_promote_threshold: u32,
+    ) -> Self {
         Self {
             hot_threshold_gb,
             warm_threshold_gb,
@@ -90,17 +94,12 @@ impl<'a> TierManager<'a> {
     /// let manager = TierManager::new(&store);
     /// manager.migrate(memory_id, StorageTier::Hot, StorageTier::Warm).await?;
     /// ```
-    pub async fn migrate(
-        &self,
-        memory_id: Uuid,
-        from: StorageTier,
-        to: StorageTier,
-    ) -> Result<()> {
+    pub async fn migrate(&self, memory_id: Uuid, from: StorageTier, to: StorageTier) -> Result<()> {
         let memory = self
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         if memory.tier != from {
             return Err(NovaError::Memory(format!(
@@ -129,7 +128,7 @@ impl<'a> TierManager<'a> {
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         let new_tier = match memory.tier {
             StorageTier::Cold => StorageTier::Warm,
@@ -153,7 +152,7 @@ impl<'a> TierManager<'a> {
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         let new_tier = match memory.tier {
             StorageTier::Hot => StorageTier::Warm,
@@ -172,7 +171,7 @@ impl<'a> TierManager<'a> {
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         if memory.tier == StorageTier::Hot {
             return Ok(false);
@@ -187,7 +186,7 @@ impl<'a> TierManager<'a> {
             .store
             .get(memory_id)
             .await?
-            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {}", memory_id)))?;
+            .ok_or_else(|| NovaError::Memory(format!("Memory not found: {memory_id}")))?;
 
         Ok(memory.tier)
     }
@@ -557,7 +556,7 @@ mod tests {
             store.insert(&memory).await.unwrap();
 
             let manager = TierManager::new(&store);
-            
+
             manager.demote(id).await.unwrap();
             let updated = store.get(id).await.unwrap().unwrap();
             assert_eq!(updated.tier, StorageTier::Warm);
@@ -586,18 +585,18 @@ mod tests {
             store.insert(&memory).await.unwrap();
 
             let manager = TierManager::new(&store);
-            
+
             assert_eq!(manager.get_tier(id).await.unwrap(), StorageTier::Hot);
-            
+
             manager.demote(id).await.unwrap();
             assert_eq!(manager.get_tier(id).await.unwrap(), StorageTier::Warm);
-            
+
             manager.demote(id).await.unwrap();
             assert_eq!(manager.get_tier(id).await.unwrap(), StorageTier::Cold);
-            
+
             manager.promote(id).await.unwrap();
             assert_eq!(manager.get_tier(id).await.unwrap(), StorageTier::Warm);
-            
+
             manager.promote(id).await.unwrap();
             assert_eq!(manager.get_tier(id).await.unwrap(), StorageTier::Hot);
         }

@@ -75,28 +75,28 @@ impl MemoryFilter {
                 } else {
                     let in_clause = type_strs
                         .iter()
-                        .map(|s| format!("'{}'", s))
+                        .map(|s| format!("'{s}'"))
                         .collect::<Vec<_>>()
                         .join(", ");
-                    conditions.push(format!("memory_type IN ({})", in_clause));
+                    conditions.push(format!("memory_type IN ({in_clause})"));
                 }
             }
         }
 
         // Min weight filter
         if let Some(min_weight) = self.min_weight {
-            conditions.push(format!("weight >= {}", min_weight));
+            conditions.push(format!("weight >= {min_weight}"));
         }
 
         // Since filter (created_at is stored as microseconds since epoch)
         if let Some(ref since) = self.since {
             let micros = since.timestamp_micros();
-            conditions.push(format!("created_at >= {}", micros));
+            conditions.push(format!("created_at >= {micros}"));
         }
 
         // Conversation ID filter
         if let Some(ref conv_id) = self.conversation_id {
-            conditions.push(format!("conversation_id = '{}'", conv_id));
+            conditions.push(format!("conversation_id = '{conv_id}'"));
         }
 
         if conditions.is_empty() {

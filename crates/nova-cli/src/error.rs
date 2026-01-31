@@ -31,13 +31,13 @@ impl From<nova_memory::NovaError> for CliError {
 
 impl From<serde_json::Error> for CliError {
     fn from(e: serde_json::Error) -> Self {
-        CliError(format!("JSON error: {}", e))
+        CliError(format!("JSON error: {e}"))
     }
 }
 
 impl From<std::io::Error> for CliError {
     fn from(e: std::io::Error) -> Self {
-        CliError(format!("IO error: {}", e))
+        CliError(format!("IO error: {e}"))
     }
 }
 

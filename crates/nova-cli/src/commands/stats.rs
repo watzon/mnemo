@@ -1,5 +1,5 @@
 use clap::Parser;
-use comfy_table::{presets::UTF8_FULL_CONDENSED, ContentArrangement, Table};
+use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
 use nova_memory::{memory::types::StorageTier, storage::LanceStore};
 
 use crate::error::CliResult;
@@ -52,13 +52,29 @@ impl StatsCommand {
                     .set_content_arrangement(ContentArrangement::Dynamic)
                     .set_header(["Tier", "Count", "Estimated Size"]);
 
-                table.add_row(["Hot", &hot_count.to_string(), &format_size(estimate_hot_size)]);
-                table.add_row(["Warm", &warm_count.to_string(), &format_size(estimate_warm_size)]);
-                table.add_row(["Cold", &cold_count.to_string(), &format_size(estimate_cold_size)]);
+                table.add_row([
+                    "Hot",
+                    &hot_count.to_string(),
+                    &format_size(estimate_hot_size),
+                ]);
+                table.add_row([
+                    "Warm",
+                    &warm_count.to_string(),
+                    &format_size(estimate_warm_size),
+                ]);
+                table.add_row([
+                    "Cold",
+                    &cold_count.to_string(),
+                    &format_size(estimate_cold_size),
+                ]);
 
                 println!("{table}\n");
 
-                println!("Total: {} memories ({} estimated)", total_count, format_size(estimate_total_size));
+                println!(
+                    "Total: {} memories ({} estimated)",
+                    total_count,
+                    format_size(estimate_total_size)
+                );
             }
         }
 
@@ -87,6 +103,6 @@ fn format_size(bytes: u64) -> String {
     } else if bytes >= KB {
         format!("{:.2} KB", bytes as f64 / KB as f64)
     } else {
-        format!("{} B", bytes)
+        format!("{bytes} B")
     }
 }

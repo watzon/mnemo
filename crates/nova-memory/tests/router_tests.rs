@@ -45,8 +45,7 @@ mod entity_extraction_tests {
             .any(|e| e.label == EntityLabel::Person);
         assert!(
             has_person || !output.entities.is_empty(),
-            "Should extract person entities from: {}",
-            text
+            "Should extract person entities from: {text}"
         );
     }
 
@@ -62,8 +61,7 @@ mod entity_extraction_tests {
             .any(|e| e.label == EntityLabel::Organization);
         assert!(
             has_org || !output.entities.is_empty(),
-            "Should extract organization entities from: {}",
-            text
+            "Should extract organization entities from: {text}"
         );
     }
 
@@ -79,8 +77,7 @@ mod entity_extraction_tests {
             .any(|e| e.label == EntityLabel::Location);
         assert!(
             has_loc || !output.entities.is_empty(),
-            "Should extract location entities from: {}",
-            text
+            "Should extract location entities from: {text}"
         );
     }
 
@@ -391,7 +388,7 @@ mod memory_type_routing_tests {
 
         // This text has procedural (how do), episodic (remember, discussed), and semantic (machine learning) indicators
         assert!(
-            output.search_types.len() >= 1,
+            !output.search_types.is_empty(),
             "Complex queries should have at least one memory type"
         );
     }
@@ -439,8 +436,7 @@ mod topic_extraction_tests {
             assert_eq!(
                 topic.to_lowercase(),
                 *topic,
-                "Topics should be normalized to lowercase: {}",
-                topic
+                "Topics should be normalized to lowercase: {topic}"
             );
         }
     }
@@ -472,8 +468,7 @@ mod query_keys_generation_tests {
         for key in &output.query_keys {
             assert!(
                 key.len() >= 2,
-                "Query keys should have at least 2 characters: {}",
-                key
+                "Query keys should have at least 2 characters: {key}"
             );
         }
     }

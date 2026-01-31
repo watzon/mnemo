@@ -77,13 +77,12 @@ impl Tombstone {
             self.topics.join(", ")
         };
 
-        let content = format!("{}", self);
+        let content = format!("{self}");
 
         format!(
-            r#"<nova-tombstone timestamp="{}" topics="{}">
-  {}
-</nova-tombstone>"#,
-            timestamp, topics_str, content
+            r#"<nova-tombstone timestamp="{timestamp}" topics="{topics_str}">
+  {content}
+</nova-tombstone>"#
         )
     }
 }
@@ -120,15 +119,14 @@ impl fmt::Display for Tombstone {
             EvictionReason::StoragePressure => "storage pressure".to_string(),
             EvictionReason::LowWeight => "low importance".to_string(),
             EvictionReason::Superseded { by } => {
-                format!("being superseded by memory {}", by)
+                format!("being superseded by memory {by}")
             }
             EvictionReason::ManualDeletion => "manual deletion".to_string(),
         };
 
         write!(
             f,
-            "I previously knew about {} with {} around {}, but this memory was evicted due to {}.",
-            topics_str, participants_str, date_str, reason_str
+            "I previously knew about {topics_str} with {participants_str} around {date_str}, but this memory was evicted due to {reason_str}."
         )
     }
 }
@@ -203,7 +201,7 @@ mod tests {
             EvictionReason::StoragePressure,
         );
 
-        let display_str = format!("{}", tombstone);
+        let display_str = format!("{tombstone}");
         assert!(display_str.contains("machine learning"));
         assert!(display_str.contains("Bob"));
         assert!(display_str.contains("storage pressure"));
@@ -224,7 +222,7 @@ mod tests {
             EvictionReason::LowWeight,
         );
 
-        let display_str = format!("{}", tombstone);
+        let display_str = format!("{tombstone}");
         assert!(display_str.contains("rust, programming and async"));
         assert!(display_str.contains("Alice and Charlie"));
         assert!(display_str.contains("low importance"));
@@ -240,7 +238,7 @@ mod tests {
             EvictionReason::ManualDeletion,
         );
 
-        let display_str = format!("{}", tombstone);
+        let display_str = format!("{tombstone}");
         assert!(display_str.contains("various topics"));
         assert!(display_str.contains("manual deletion"));
     }
@@ -255,7 +253,7 @@ mod tests {
             EvictionReason::ManualDeletion,
         );
 
-        let display_str = format!("{}", tombstone);
+        let display_str = format!("{tombstone}");
         assert!(display_str.contains("unknown participants"));
     }
 
@@ -270,8 +268,8 @@ mod tests {
             EvictionReason::Superseded { by: new_memory_id },
         );
 
-        let display_str = format!("{}", tombstone);
-        assert!(display_str.contains(&format!("being superseded by memory {}", new_memory_id)));
+        let display_str = format!("{tombstone}");
+        assert!(display_str.contains(&format!("being superseded by memory {new_memory_id}")));
     }
 
     #[test]
@@ -287,7 +285,7 @@ mod tests {
             EvictionReason::StoragePressure,
         );
 
-        let display_str = format!("{}", tombstone);
+        let display_str = format!("{tombstone}");
         assert!(display_str.contains("June 2024"));
     }
 

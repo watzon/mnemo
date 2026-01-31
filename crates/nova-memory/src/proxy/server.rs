@@ -1,9 +1,4 @@
-use axum::{
-    http::StatusCode,
-    response::IntoResponse,
-    routing::get,
-    Json, Router,
-};
+use axum::{Json, Router, http::StatusCode, response::IntoResponse, routing::get};
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tokio::signal;
@@ -29,18 +24,18 @@ impl ProxyServer {
             .config
             .listen_addr
             .parse()
-            .map_err(|e| NovaError::Config(format!("Invalid listen address: {}", e)))?;
+            .map_err(|e| NovaError::Config(format!("Invalid listen address: {e}")))?;
 
         tracing::info!("Starting proxy server on {}", addr);
 
         let listener = TcpListener::bind(addr)
             .await
-            .map_err(|e| NovaError::Proxy(format!("Failed to bind to {}: {}", addr, e)))?;
+            .map_err(|e| NovaError::Proxy(format!("Failed to bind to {addr}: {e}")))?;
 
         axum::serve(listener, app)
             .with_graceful_shutdown(shutdown_signal())
             .await
-            .map_err(|e| NovaError::Proxy(format!("Server error: {}", e)))?;
+            .map_err(|e| NovaError::Proxy(format!("Server error: {e}")))?;
 
         tracing::info!("Proxy server shut down gracefully");
         Ok(())
@@ -95,7 +90,12 @@ mod tests {
         let app = Router::new().route("/health", get(health_check));
 
         let response = app
-            .oneshot(Request::builder().uri("/health").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/health")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 
@@ -107,7 +107,12 @@ mod tests {
         let app = Router::new().fallback(proxy_handler);
 
         let response = app
-            .oneshot(Request::builder().uri("/any/path").body(Body::empty()).unwrap())
+            .oneshot(
+                Request::builder()
+                    .uri("/any/path")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
             .await
             .unwrap();
 

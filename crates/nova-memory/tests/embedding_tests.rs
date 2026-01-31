@@ -2,7 +2,7 @@
 //!
 //! Tests the EmbeddingModel implementation with real model loading.
 
-use nova_memory::embedding::{EmbeddingModel, EMBEDDING_DIMENSION};
+use nova_memory::embedding::{EMBEDDING_DIMENSION, EmbeddingModel};
 
 /// Calculate cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -42,8 +42,7 @@ mod embedding_dimension_tests {
         assert_eq!(
             embedding.len(),
             EMBEDDING_DIMENSION,
-            "Embedding should have dimension {}",
-            EMBEDDING_DIMENSION
+            "Embedding should have dimension {EMBEDDING_DIMENSION}"
         );
     }
 
@@ -100,8 +99,7 @@ mod similarity_tests {
 
         assert!(
             similarity > 0.8,
-            "Similar texts should have similarity > 0.8, got {:.3}",
-            similarity
+            "Similar texts should have similarity > 0.8, got {similarity:.3}"
         );
     }
 
@@ -119,8 +117,7 @@ mod similarity_tests {
 
         assert!(
             similarity < 0.75,
-            "Different texts should have similarity < 0.75, got {:.3}",
-            similarity
+            "Different texts should have similarity < 0.75, got {similarity:.3}"
         );
     }
 
@@ -136,8 +133,7 @@ mod similarity_tests {
 
         assert!(
             similarity > 0.99,
-            "Identical texts should have similarity > 0.99, got {:.3}",
-            similarity
+            "Identical texts should have similarity > 0.99, got {similarity:.3}"
         );
     }
 
@@ -170,11 +166,7 @@ mod similarity_tests {
 
             assert!(
                 similarity > threshold,
-                "Texts '{}' and '{}' should have similarity > {:.2}, got {:.3}",
-                text1,
-                text2,
-                threshold,
-                similarity
+                "Texts '{text1}' and '{text2}' should have similarity > {threshold:.2}, got {similarity:.3}"
             );
         }
     }
@@ -196,10 +188,7 @@ mod similarity_tests {
 
             assert!(
                 similarity < 0.8,
-                "Unrelated texts '{}' and '{}' should have similarity < 0.8, got {:.3}",
-                text1,
-                text2,
-                similarity
+                "Unrelated texts '{text1}' and '{text2}' should have similarity < 0.8, got {similarity:.3}"
             );
         }
     }
@@ -237,9 +226,7 @@ mod batch_embedding_tests {
             assert_eq!(
                 emb.len(),
                 EMBEDDING_DIMENSION,
-                "Embedding {} should have dimension {}",
-                i,
-                EMBEDDING_DIMENSION
+                "Embedding {i} should have dimension {EMBEDDING_DIMENSION}"
             );
         }
     }
@@ -261,8 +248,7 @@ mod batch_embedding_tests {
 
         assert!(
             similarity > 0.99,
-            "Single and batch embedding should be nearly identical, got {:.3}",
-            similarity
+            "Single and batch embedding should be nearly identical, got {similarity:.3}"
         );
     }
 
@@ -288,9 +274,7 @@ mod batch_embedding_tests {
             let similarity = cosine_similarity(batch_emb, single_emb);
             assert!(
                 similarity > 0.99,
-                "Batch embedding {} should match single embedding, got {:.3}",
-                i,
-                similarity
+                "Batch embedding {i} should match single embedding, got {similarity:.3}"
             );
         }
     }
@@ -314,7 +298,7 @@ mod batch_embedding_tests {
     fn test_large_batch_embedding() {
         let mut model = EmbeddingModel::new().expect("Failed to load model");
         let texts: Vec<String> = (0..50)
-            .map(|i| format!("Test sentence number {}", i))
+            .map(|i| format!("Test sentence number {i}"))
             .collect();
 
         let embeddings = model
@@ -340,8 +324,7 @@ mod embedding_properties_tests {
 
         assert!(
             norm > 0.0 && norm < 100.0,
-            "Embedding norm should be reasonable, got {:.3}",
-            norm
+            "Embedding norm should be reasonable, got {norm:.3}"
         );
     }
 
@@ -354,8 +337,7 @@ mod embedding_properties_tests {
 
         assert!(
             sum > 0.0,
-            "Embedding should not be all zeros, got sum of abs values: {:.3}",
-            sum
+            "Embedding should not be all zeros, got sum of abs values: {sum:.3}"
         );
     }
 
@@ -369,9 +351,7 @@ mod embedding_properties_tests {
 
         assert!(
             max - min > 0.01,
-            "Embedding should have variation, got range [{:.3}, {:.3}]",
-            min,
-            max
+            "Embedding should have variation, got range [{min:.3}, {max:.3}]"
         );
     }
 }

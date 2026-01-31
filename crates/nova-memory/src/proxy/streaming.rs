@@ -10,7 +10,7 @@ use futures::stream::Stream;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 
 /// Result of teeing a stream - provides both the forwarding stream and a handle to get buffered content
 pub struct TeeResult<S> {
@@ -132,9 +132,7 @@ impl StreamingProxy {
         let mut current_data = String::new();
 
         for line in raw.lines() {
-            if line.starts_with("data: ") {
-                let data = &line[6..];
-
+            if let Some(data) = line.strip_prefix("data: ") {
                 if data == "[DONE]" {
                     events.push(SseEvent::Done);
                 } else if !current_data.is_empty() {

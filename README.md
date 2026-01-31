@@ -36,10 +36,10 @@ Nova Memory is a Rust daemon that sits between your chat client and LLM API (Ope
                            │
               ┌────────────┼────────────┐
               ▼            ▼            ▼
-         ┌────────┐  ┌────────┐  ┌────────┐
-         │  Hot   │  │  Warm  │  │  Cold  │
+         ┌────────┐  ┌────────┐  ┌─────────┐
+         │  Hot   │  │  Warm  │  │  Cold   │
          │(Memory)│  │ (Disk) │  │(Archive)│
-         └────────┘  └────────┘  └────────┘
+         └────────┘  └────────┘  └─────────┘
 ```
 
 ### Memory Types

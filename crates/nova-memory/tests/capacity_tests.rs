@@ -4,9 +4,7 @@
 
 use chrono::{Duration, Utc};
 use nova_memory::memory::tombstone::{EvictionReason, Tombstone};
-use nova_memory::memory::types::{
-    CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
-};
+use nova_memory::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use nova_memory::storage::{
     CompactionConfig, Compactor, EvictionConfig, Evictor, LanceStore, TierConfig, TierManager,
 };
@@ -36,11 +34,7 @@ fn create_test_memory_with_tier(content: &str, tier: StorageTier) -> Memory {
 }
 
 /// Test helper: Create a test memory with specific tier and access count
-fn create_test_memory_with_access(
-    content: &str,
-    tier: StorageTier,
-    access_count: u32,
-) -> Memory {
+fn create_test_memory_with_access(content: &str, tier: StorageTier, access_count: u32) -> Memory {
     let mut memory = create_test_memory_with_tier(content, tier);
     memory.access_count = access_count;
     memory
@@ -371,7 +365,8 @@ mod compaction_tests {
     #[tokio::test]
     async fn test_compact_full_to_summary() {
         let (store, _dir) = create_test_store().await;
-        let long_content = "First sentence here. Second sentence here. Third sentence here. Fourth sentence here.";
+        let long_content =
+            "First sentence here. Second sentence here. Third sentence here. Fourth sentence here.";
         let memory = create_test_memory_with_age(long_content, StorageTier::Warm, 45);
         let id = memory.id;
         let original_len = memory.content.len();
@@ -427,7 +422,10 @@ mod compaction_tests {
 
         let updated = store.get(id).await.unwrap().unwrap();
         assert_eq!(updated.compression, CompressionLevel::Hash);
-        assert_eq!(updated.content, "[content archived - searchable via embedding]");
+        assert_eq!(
+            updated.content,
+            "[content archived - searchable via embedding]"
+        );
     }
 
     #[tokio::test]
@@ -592,7 +590,8 @@ mod compaction_tests {
     #[tokio::test]
     async fn test_progressive_compression_over_time() {
         let (store, _dir) = create_test_store().await;
-        let content = "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence.";
+        let content =
+            "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence.";
 
         // Create memory at different ages
         let new_memory = create_test_memory_with_age(content, StorageTier::Warm, 5);
@@ -692,7 +691,7 @@ mod eviction_tests {
 
         // Insert 50 memories = 50% capacity
         let memories: Vec<Memory> = (0..50)
-            .map(|i| create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot))
+            .map(|i| create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot))
             .collect();
         store.insert_batch(&memories).await.unwrap();
 
@@ -711,7 +710,7 @@ mod eviction_tests {
 
         // Insert 75 memories = 75% capacity
         let memories: Vec<Memory> = (0..75)
-            .map(|i| create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot))
+            .map(|i| create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot))
             .collect();
         store.insert_batch(&memories).await.unwrap();
 
@@ -730,7 +729,7 @@ mod eviction_tests {
 
         // Insert 85 memories = 85% capacity
         let memories: Vec<Memory> = (0..85)
-            .map(|i| create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot))
+            .map(|i| create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot))
             .collect();
         store.insert_batch(&memories).await.unwrap();
 
@@ -749,7 +748,7 @@ mod eviction_tests {
 
         // Insert 96 memories = 96% capacity
         let memories: Vec<Memory> = (0..96)
-            .map(|i| create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot))
+            .map(|i| create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot))
             .collect();
         store.insert_batch(&memories).await.unwrap();
 
@@ -772,12 +771,7 @@ mod eviction_tests {
         // Insert 50 memories = 50% capacity (below 80% threshold)
         let memories: Vec<Memory> = (0..50)
             .map(|i| {
-                create_memory_with_access_time(
-                    &format!("Memory {}", i),
-                    0.3,
-                    StorageTier::Hot,
-                    100,
-                )
+                create_memory_with_access_time(&format!("Memory {i}"), 0.3, StorageTier::Hot, 100)
             })
             .collect();
         store.insert_batch(&memories).await.unwrap();
@@ -801,12 +795,8 @@ mod eviction_tests {
         let mut memories = Vec::new();
         for i in 0..9 {
             let weight = 0.1 + (i as f32) * 0.05;
-            let mem = create_memory_with_access_time(
-                &format!("Mem-{}", i),
-                weight,
-                StorageTier::Hot,
-                48,
-            );
+            let mem =
+                create_memory_with_access_time(&format!("Mem-{i}"), weight, StorageTier::Hot, 48);
             memories.push(mem);
         }
         store.insert_batch(&memories).await.unwrap();
@@ -840,7 +830,7 @@ mod eviction_tests {
         // Protected by recency
         for i in 0..3 {
             memories.push(create_memory_with_access_time(
-                &format!("Recent-{}", i),
+                &format!("Recent-{i}"),
                 0.3,
                 StorageTier::Hot,
                 1,
@@ -850,7 +840,7 @@ mod eviction_tests {
         // Protected by weight
         for i in 0..3 {
             memories.push(create_memory_with_access_time(
-                &format!("Heavy-{}", i),
+                &format!("Heavy-{i}"),
                 0.8,
                 StorageTier::Hot,
                 100,
@@ -860,7 +850,7 @@ mod eviction_tests {
         // Unprotected
         for i in 0..3 {
             memories.push(create_memory_with_access_time(
-                &format!("Evictable-{}", i),
+                &format!("Evictable-{i}"),
                 0.2,
                 StorageTier::Hot,
                 100,
@@ -897,7 +887,7 @@ mod eviction_tests {
         for i in 0..5 {
             let weight = 0.1 + (i as f32) * 0.1;
             let mem = create_memory_with_access_time(
-                &format!("Candidate-{}", i),
+                &format!("Candidate-{i}"),
                 weight,
                 StorageTier::Hot,
                 48,
@@ -933,7 +923,7 @@ mod eviction_tests {
 
         // Insert 50 memories
         let memories: Vec<Memory> = (0..50)
-            .map(|i| create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot))
+            .map(|i| create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot))
             .collect();
         store.insert_batch(&memories).await.unwrap();
 
@@ -972,7 +962,7 @@ mod tombstone_tests {
         let mut memories = Vec::new();
         for i in 0..9 {
             let mem = create_test_memory_with_entities(
-                &format!("Evictable-{}", i),
+                &format!("Evictable-{i}"),
                 StorageTier::Hot,
                 vec![format!("topic-{}", i), "shared-topic".to_string()],
             );
@@ -1023,7 +1013,7 @@ mod tombstone_tests {
 
         // Add more memories to trigger eviction
         for i in 0..8 {
-            let mem = create_test_memory_with_tier(&format!("Filler-{}", i), StorageTier::Hot);
+            let mem = create_test_memory_with_tier(&format!("Filler-{i}"), StorageTier::Hot);
             store.insert(&mem).await.unwrap();
         }
 
@@ -1073,7 +1063,7 @@ mod tombstone_tests {
 
         // Add more memories to trigger eviction
         for i in 0..8 {
-            let mem = create_test_memory_with_tier(&format!("Filler-{}", i), StorageTier::Hot);
+            let mem = create_test_memory_with_tier(&format!("Filler-{i}"), StorageTier::Hot);
             store.insert(&mem).await.unwrap();
         }
 
@@ -1126,7 +1116,7 @@ mod tombstone_tests {
 
         // Add more memories to trigger eviction
         for i in 0..8 {
-            let mem = create_test_memory_with_tier(&format!("Filler-{}", i), StorageTier::Hot);
+            let mem = create_test_memory_with_tier(&format!("Filler-{i}"), StorageTier::Hot);
             store.insert(&mem).await.unwrap();
         }
 
@@ -1163,7 +1153,7 @@ mod tombstone_tests {
 
         // Add more memories to trigger eviction
         for i in 0..8 {
-            let mem = create_test_memory_with_tier(&format!("Filler-{}", i), StorageTier::Hot);
+            let mem = create_test_memory_with_tier(&format!("Filler-{i}"), StorageTier::Hot);
             store.insert(&mem).await.unwrap();
         }
 
@@ -1282,7 +1272,7 @@ mod integration_tests {
         let mut memories = Vec::new();
         for i in 0..9 {
             let mut mem = create_test_memory_with_age(
-                &format!("Old memory {} with some content here", i),
+                &format!("Old memory {i} with some content here"),
                 StorageTier::Hot,
                 45,
             );

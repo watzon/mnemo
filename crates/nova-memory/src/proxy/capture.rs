@@ -140,7 +140,11 @@ impl ResponseCapture {
 
             let mut pipeline = pipeline.lock().await;
             match pipeline
-                .ingest(&content, MemorySource::Conversation, Some(conversation_id.clone()))
+                .ingest(
+                    &content,
+                    MemorySource::Conversation,
+                    Some(conversation_id.clone()),
+                )
                 .await
             {
                 Ok(Some(memory)) => {

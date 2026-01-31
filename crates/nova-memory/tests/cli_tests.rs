@@ -3,9 +3,7 @@
 //! Tests the CLI command implementations directly without spawning processes.
 
 use chrono::Utc;
-use nova_memory::memory::types::{
-    CompressionLevel, Memory, MemorySource, MemoryType, StorageTier,
-};
+use nova_memory::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use nova_memory::storage::LanceStore;
 use tempfile::tempdir;
 use uuid::Uuid;
@@ -81,7 +79,7 @@ mod memory_list_tests {
 
         // Create 10 memories
         for i in 0..10 {
-            let memory = create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot);
+            let memory = create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot);
             store.insert(&memory).await.unwrap();
         }
 
@@ -194,7 +192,10 @@ mod memory_show_tests {
         assert_eq!(retrieved.memory_type, MemoryType::Episodic);
         assert_eq!(retrieved.source, MemorySource::Conversation);
         assert_eq!(retrieved.conversation_id, Some("conv-123".to_string()));
-        assert_eq!(retrieved.entities, vec!["entity1".to_string(), "entity2".to_string()]);
+        assert_eq!(
+            retrieved.entities,
+            vec!["entity1".to_string(), "entity2".to_string()]
+        );
         assert_eq!(retrieved.embedding.len(), 384);
     }
 }
@@ -231,7 +232,8 @@ mod memory_delete_tests {
     async fn test_delete_creates_tombstone() {
         let (store, _dir) = create_test_store().await;
 
-        let mut memory = create_test_memory_with_tier("To be deleted with tombstone", StorageTier::Hot);
+        let mut memory =
+            create_test_memory_with_tier("To be deleted with tombstone", StorageTier::Hot);
         memory.entities = vec!["topic1".to_string(), "topic2".to_string()];
         let id = memory.id;
         store.insert(&memory).await.unwrap();
@@ -335,17 +337,17 @@ mod stats_tests {
 
         // Add memories to different tiers
         for i in 0..5 {
-            let memory = create_test_memory_with_tier(&format!("Hot {}", i), StorageTier::Hot);
+            let memory = create_test_memory_with_tier(&format!("Hot {i}"), StorageTier::Hot);
             store.insert(&memory).await.unwrap();
         }
 
         for i in 0..3 {
-            let memory = create_test_memory_with_tier(&format!("Warm {}", i), StorageTier::Warm);
+            let memory = create_test_memory_with_tier(&format!("Warm {i}"), StorageTier::Warm);
             store.insert(&memory).await.unwrap();
         }
 
         for i in 0..2 {
-            let memory = create_test_memory_with_tier(&format!("Cold {}", i), StorageTier::Cold);
+            let memory = create_test_memory_with_tier(&format!("Cold {i}"), StorageTier::Cold);
             store.insert(&memory).await.unwrap();
         }
 
@@ -366,7 +368,7 @@ mod stats_tests {
 
         // Add memories to hot tier only
         for i in 0..10 {
-            let memory = create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot);
+            let memory = create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot);
             store.insert(&memory).await.unwrap();
         }
 
@@ -415,7 +417,7 @@ mod compact_tests {
 
         // Create old memories in all tiers
         for tier in [StorageTier::Hot, StorageTier::Warm, StorageTier::Cold] {
-            let mut memory = create_test_memory_with_tier(&format!("{:?} old", tier), tier);
+            let mut memory = create_test_memory_with_tier(&format!("{tier:?} old"), tier);
             memory.created_at = Utc::now() - Duration::days(45);
             memory.weight = 0.5;
             store.insert(&memory).await.unwrap();
@@ -508,7 +510,6 @@ upstream_url = "https://api.example.com"
 
 mod json_output_tests {
     use super::*;
-    use serde_json;
 
     #[tokio::test]
     async fn test_json_output_format_list() {
@@ -516,7 +517,7 @@ mod json_output_tests {
 
         // Create test memories
         for i in 0..3 {
-            let memory = create_test_memory_with_tier(&format!("Memory {}", i), StorageTier::Hot);
+            let memory = create_test_memory_with_tier(&format!("Memory {i}"), StorageTier::Hot);
             store.insert(&memory).await.unwrap();
         }
 
@@ -585,12 +586,12 @@ mod json_output_tests {
 
         // Add memories to different tiers
         for i in 0..5 {
-            let memory = create_test_memory_with_tier(&format!("Hot {}", i), StorageTier::Hot);
+            let memory = create_test_memory_with_tier(&format!("Hot {i}"), StorageTier::Hot);
             store.insert(&memory).await.unwrap();
         }
 
         for i in 0..3 {
-            let memory = create_test_memory_with_tier(&format!("Warm {}", i), StorageTier::Warm);
+            let memory = create_test_memory_with_tier(&format!("Warm {i}"), StorageTier::Warm);
             store.insert(&memory).await.unwrap();
         }
 
@@ -691,7 +692,7 @@ mod edge_case_tests {
 
         for invalid in &invalid_uuids {
             let result = Uuid::parse_str(invalid);
-            assert!(result.is_err(), "Should fail to parse: {}", invalid);
+            assert!(result.is_err(), "Should fail to parse: {invalid}");
         }
     }
 

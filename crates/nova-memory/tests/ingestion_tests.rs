@@ -4,7 +4,7 @@
 //! These tests verify filtering, memory creation, and storage integration.
 
 use nova_memory::memory::ingestion::IngestionPipeline;
-use nova_memory::memory::types::{MemorySource, MemoryType, StorageTier, CompressionLevel};
+use nova_memory::memory::types::{CompressionLevel, MemorySource, MemoryType, StorageTier};
 use nova_memory::storage::LanceStore;
 use tempfile::tempdir;
 
@@ -203,7 +203,10 @@ mod content_filtering_tests {
 
         let result = pipeline.ingest("", MemorySource::Manual, None).await;
         assert!(result.is_ok());
-        assert!(result.unwrap().is_none(), "Empty content should be filtered");
+        assert!(
+            result.unwrap().is_none(),
+            "Empty content should be filtered"
+        );
     }
 
     #[tokio::test]
@@ -218,8 +221,7 @@ mod content_filtering_tests {
             assert!(result.is_ok());
             assert!(
                 result.unwrap().is_none(),
-                "Whitespace-only content '{}' should be filtered",
-                ws
+                "Whitespace-only content '{ws}' should be filtered"
             );
         }
     }
@@ -244,7 +246,9 @@ mod content_filtering_tests {
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
         // Content with exactly 10 characters should be accepted
-        let result = pipeline.ingest("1234567890", MemorySource::Manual, None).await;
+        let result = pipeline
+            .ingest("1234567890", MemorySource::Manual, None)
+            .await;
         assert!(result.is_ok());
         assert!(
             result.unwrap().is_some(),
@@ -258,7 +262,9 @@ mod content_filtering_tests {
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
         let long_text = "This is a very long piece of content that should definitely be accepted by the filtering mechanism.".repeat(10);
-        let result = pipeline.ingest(&long_text, MemorySource::Manual, None).await;
+        let result = pipeline
+            .ingest(&long_text, MemorySource::Manual, None)
+            .await;
 
         assert!(result.is_ok());
         assert!(result.unwrap().is_some(), "Long content should be accepted");
@@ -270,16 +276,31 @@ mod content_filtering_tests {
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
         // 9 characters - should be filtered
-        let result = pipeline.ingest("123456789", MemorySource::Manual, None).await;
-        assert!(result.unwrap().is_none(), "9 char content should be filtered");
+        let result = pipeline
+            .ingest("123456789", MemorySource::Manual, None)
+            .await;
+        assert!(
+            result.unwrap().is_none(),
+            "9 char content should be filtered"
+        );
 
         // 10 characters - should be accepted
-        let result = pipeline.ingest("1234567890", MemorySource::Manual, None).await;
-        assert!(result.unwrap().is_some(), "10 char content should be accepted");
+        let result = pipeline
+            .ingest("1234567890", MemorySource::Manual, None)
+            .await;
+        assert!(
+            result.unwrap().is_some(),
+            "10 char content should be accepted"
+        );
 
         // 11 characters - should be accepted
-        let result = pipeline.ingest("12345678901", MemorySource::Manual, None).await;
-        assert!(result.unwrap().is_some(), "11 char content should be accepted");
+        let result = pipeline
+            .ingest("12345678901", MemorySource::Manual, None)
+            .await;
+        assert!(
+            result.unwrap().is_some(),
+            "11 char content should be accepted"
+        );
     }
 }
 
@@ -291,9 +312,7 @@ mod memory_type_assignment_tests {
         let (store, _dir) = create_test_store().await;
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
-        let sources = [
-            MemorySource::Conversation,
-        ];
+        let sources = [MemorySource::Conversation];
 
         for source in &sources {
             let result = pipeline
@@ -318,27 +337,18 @@ mod memory_type_assignment_tests {
         let (store, _dir) = create_test_store().await;
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
-        let sources = [
-            MemorySource::Manual,
-            MemorySource::File,
-            MemorySource::Web,
-        ];
+        let sources = [MemorySource::Manual, MemorySource::File, MemorySource::Web];
 
         for source in &sources {
             let result = pipeline
-                .ingest(
-                    "Important fact to remember.",
-                    *source,
-                    None,
-                )
+                .ingest("Important fact to remember.", *source, None)
                 .await;
 
             let memory = result.unwrap().unwrap();
             assert_eq!(
                 memory.memory_type,
                 MemoryType::Semantic,
-                "{:?} source should create Semantic memory",
-                source
+                "{source:?} source should create Semantic memory"
             );
         }
     }
@@ -588,11 +598,7 @@ mod edge_case_tests {
 
         for text in &unicode_texts {
             let result = pipeline.ingest(text, MemorySource::Manual, None).await;
-            assert!(
-                result.is_ok(),
-                "Should handle unicode content: {}",
-                text
-            );
+            assert!(result.is_ok(), "Should handle unicode content: {text}");
             // Should either create memory or filter (both are valid)
             let _ = result.unwrap();
         }
@@ -604,7 +610,9 @@ mod edge_case_tests {
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
         let special_text = "Special chars: @#$%^&*()_+-=[]{}|;':\",./<>?";
-        let result = pipeline.ingest(special_text, MemorySource::Manual, None).await;
+        let result = pipeline
+            .ingest(special_text, MemorySource::Manual, None)
+            .await;
 
         assert!(result.is_ok(), "Should handle special characters");
     }
@@ -615,7 +623,9 @@ mod edge_case_tests {
         let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
 
         let multiline_text = "Line 1\nLine 2\nLine 3\n\nLine after blank";
-        let result = pipeline.ingest(multiline_text, MemorySource::Manual, None).await;
+        let result = pipeline
+            .ingest(multiline_text, MemorySource::Manual, None)
+            .await;
 
         assert!(result.is_ok());
         let memory = result.unwrap();
@@ -633,9 +643,15 @@ mod edge_case_tests {
         // Test with content that's long but within BERT's 512 token limit
         // BERT tokenizer typically produces ~1.3 tokens per word, so 300 words is safe
         let long_content = "This is a test sentence with meaningful content. ".repeat(50);
-        let result = pipeline.ingest(&long_content, MemorySource::Manual, None).await;
+        let result = pipeline
+            .ingest(&long_content, MemorySource::Manual, None)
+            .await;
 
-        assert!(result.is_ok(), "Should handle long content: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Should handle long content: {:?}",
+            result.err()
+        );
         assert!(result.unwrap().is_some(), "Long content should be accepted");
     }
 }

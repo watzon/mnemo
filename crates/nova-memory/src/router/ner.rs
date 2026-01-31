@@ -2,7 +2,7 @@ use crate::NovaError;
 use candle_core::{DType, Device, Tensor};
 use candle_nn::{Linear, Module, VarBuilder};
 use candle_transformers::models::bert::{BertModel, Config as BertConfig, DTYPE};
-use hf_hub::{api::sync::Api, Repo, RepoType};
+use hf_hub::{Repo, RepoType, api::sync::Api};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -67,7 +67,7 @@ impl NerModel {
         let device = Device::Cpu;
 
         let api =
-            Api::new().map_err(|e| NovaError::Router(format!("Failed to create HF API: {}", e)))?;
+            Api::new().map_err(|e| NovaError::Router(format!("Failed to create HF API: {e}")))?;
 
         let repo = api.repo(Repo::with_revision(
             MODEL_ID.to_string(),
@@ -77,21 +77,21 @@ impl NerModel {
 
         let config_path = repo
             .get("config.json")
-            .map_err(|e| NovaError::Router(format!("Failed to download config: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to download config: {e}")))?;
 
         let tokenizer_path = repo
             .get("onnx/tokenizer.json")
-            .map_err(|e| NovaError::Router(format!("Failed to download tokenizer: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to download tokenizer: {e}")))?;
 
         let weights_path = repo
             .get("model.safetensors")
-            .map_err(|e| NovaError::Router(format!("Failed to download weights: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to download weights: {e}")))?;
 
         let config_str = std::fs::read_to_string(&config_path)
-            .map_err(|e| NovaError::Router(format!("Failed to read config: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to read config: {e}")))?;
 
         let model_config: ModelConfig = serde_json::from_str(&config_str)
-            .map_err(|e| NovaError::Router(format!("Failed to parse config: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to parse config: {e}")))?;
 
         let id2label: HashMap<u32, String> = model_config
             .id2label
@@ -101,15 +101,15 @@ impl NerModel {
             .collect();
 
         let tokenizer = Tokenizer::from_file(&tokenizer_path)
-            .map_err(|e| NovaError::Router(format!("Failed to load tokenizer: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to load tokenizer: {e}")))?;
 
         let vb = unsafe {
             VarBuilder::from_mmaped_safetensors(&[weights_path], DTYPE, &device)
-                .map_err(|e| NovaError::Router(format!("Failed to load weights: {}", e)))?
+                .map_err(|e| NovaError::Router(format!("Failed to load weights: {e}")))?
         };
 
         let model = BertModel::load(vb.pp("bert"), &model_config.bert_config)
-            .map_err(|e| NovaError::Router(format!("Failed to load BERT model: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to load BERT model: {e}")))?;
 
         let num_labels = if id2label.is_empty() {
             9
@@ -122,7 +122,7 @@ impl NerModel {
             num_labels,
             vb.pp("classifier"),
         )
-        .map_err(|e| NovaError::Router(format!("Failed to load classifier: {}", e)))?;
+        .map_err(|e| NovaError::Router(format!("Failed to load classifier: {e}")))?;
 
         Ok(Self {
             model,
@@ -137,7 +137,7 @@ impl NerModel {
         let encoding = self
             .tokenizer
             .encode(text, true)
-            .map_err(|e| NovaError::Router(format!("Tokenization failed: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Tokenization failed: {e}")))?;
 
         let token_ids = encoding.get_ids();
         let tokens = encoding.get_tokens();
@@ -147,40 +147,40 @@ impl NerModel {
         }
 
         let token_ids_tensor = Tensor::new(token_ids, &self.device)
-            .map_err(|e| NovaError::Router(format!("Failed to create tensor: {}", e)))?
+            .map_err(|e| NovaError::Router(format!("Failed to create tensor: {e}")))?
             .unsqueeze(0)
-            .map_err(|e| NovaError::Router(format!("Failed to unsqueeze: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to unsqueeze: {e}")))?;
 
         let token_type_ids = token_ids_tensor
             .zeros_like()
-            .map_err(|e| NovaError::Router(format!("Failed to create token_type_ids: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to create token_type_ids: {e}")))?;
 
         let hidden_states = self
             .model
             .forward(&token_ids_tensor, &token_type_ids, None)
-            .map_err(|e| NovaError::Router(format!("Model forward pass failed: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Model forward pass failed: {e}")))?;
 
         let logits = self
             .classifier
             .forward(&hidden_states)
-            .map_err(|e| NovaError::Router(format!("Classifier forward failed: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Classifier forward failed: {e}")))?;
 
         let logits = logits
             .squeeze(0)
-            .map_err(|e| NovaError::Router(format!("Failed to squeeze logits: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to squeeze logits: {e}")))?;
 
         let probabilities = candle_nn::ops::softmax(&logits, 1)
-            .map_err(|e| NovaError::Router(format!("Softmax failed: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Softmax failed: {e}")))?;
 
         let predictions = logits
             .argmax(1)
-            .map_err(|e| NovaError::Router(format!("Argmax failed: {}", e)))?
+            .map_err(|e| NovaError::Router(format!("Argmax failed: {e}")))?
             .to_vec1::<u32>()
-            .map_err(|e| NovaError::Router(format!("Failed to convert predictions: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to convert predictions: {e}")))?;
 
         let probs_2d = probabilities
             .to_dtype(DType::F32)
-            .map_err(|e| NovaError::Router(format!("Failed to convert dtype: {}", e)))?;
+            .map_err(|e| NovaError::Router(format!("Failed to convert dtype: {e}")))?;
 
         let entities = self.extract_bio_entities(tokens, &predictions, &probs_2d)?;
         Ok(entities)
@@ -238,8 +238,8 @@ impl NerModel {
                 if let Some((ref mut text, ref label, ref mut confidences)) = current_entity {
                     let tag_label = EntityLabel::from_tag(tag);
                     if tag_label.as_ref() == Some(label) {
-                        if token.starts_with("##") {
-                            text.push_str(&token[2..]);
+                        if let Some(stripped) = token.strip_prefix("##") {
+                            text.push_str(stripped);
                         } else {
                             text.push(' ');
                             text.push_str(token);
@@ -259,15 +259,13 @@ impl NerModel {
                         current_entity = None;
                     }
                 }
-            } else {
-                if let Some((text, label, confidences)) = current_entity.take() {
-                    let avg_confidence = confidences.iter().sum::<f32>() / confidences.len() as f32;
-                    entities.push(Entity {
-                        text: clean_token_text(&text),
-                        label,
-                        confidence: avg_confidence,
-                    });
-                }
+            } else if let Some((text, label, confidences)) = current_entity.take() {
+                let avg_confidence = confidences.iter().sum::<f32>() / confidences.len() as f32;
+                entities.push(Entity {
+                    text: clean_token_text(&text),
+                    label,
+                    confidence: avg_confidence,
+                });
             }
         }
 
@@ -334,9 +332,7 @@ mod tests {
 
         assert!(
             has_person || has_org || has_loc,
-            "Should extract at least one entity from: '{}'. Got: {:?}",
-            text,
-            entities
+            "Should extract at least one entity from: '{text}'. Got: {entities:?}"
         );
     }
 
