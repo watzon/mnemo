@@ -1,8 +1,8 @@
 /**
- * Nova Memory + OpenRouter Test
+ * Mnemo + OpenRouter Test
  *
- * This script tests nova-memory's proxy functionality with OpenRouter.
- * It uses the OpenAI SDK pointing at the nova-memory proxy, which then
+ * This script tests mnemo's proxy functionality with OpenRouter.
+ * It uses the OpenAI SDK pointing at the mnemo proxy, which then
  * forwards requests to OpenRouter via dynamic passthrough.
  *
  * Usage:
@@ -11,11 +11,11 @@
 
 import OpenAI from "npm:openai@4";
 
-// Nova Memory proxy configuration
+// Mnemo proxy configuration
 const NOVA_PROXY = "http://127.0.0.1:9999";
 const OPENROUTER_BASE = "https://openrouter.ai/api/v1";
 
-// The full passthrough URL through nova-memory
+// The full passthrough URL through mnemo
 const PASSTHROUGH_URL = `${NOVA_PROXY}/p/${OPENROUTER_BASE}`;
 
 const apiKey = Deno.env.get("OPENROUTER_API_KEY");
@@ -25,18 +25,18 @@ if (!apiKey) {
   Deno.exit(1);
 }
 
-// Initialize OpenAI client pointing at Nova Memory proxy
+// Initialize OpenAI client pointing at Mnemo proxy
 const client = new OpenAI({
   apiKey,
   baseURL: PASSTHROUGH_URL,
   defaultHeaders: {
-    "HTTP-Referer": "https://github.com/watzon/nova-memory", // Required by OpenRouter
-    "X-Title": "Nova Memory Test",
+    "HTTP-Referer": "https://github.com/watzon/mnemo", // Required by OpenRouter
+    "X-Title": "Mnemo Test",
   },
 });
 
 console.log("=".repeat(60));
-console.log("Nova Memory + OpenRouter Integration Test");
+console.log("Mnemo + OpenRouter Integration Test");
 console.log("=".repeat(60));
 console.log(`Proxy URL: ${PASSTHROUGH_URL}`);
 console.log();
@@ -56,7 +56,7 @@ async function testBasicChat() {
         },
         {
           role: "user",
-          content: "What is nova-memory? Just give a one-sentence answer.",
+          content: "What is mnemo? Just give a one-sentence answer.",
         },
       ],
       max_tokens: 100,

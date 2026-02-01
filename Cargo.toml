@@ -1,13 +1,13 @@
 [workspace]
-members = ["crates/nova-memory", "crates/nova-cli"]
+members = ["crates/mnemo", "crates/mnemo-cli"]
 resolver = "3"
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-authors = ["Nova Memory Team"]
+authors = ["Mnemo Team"]
 license = "MIT"
-repository = "https://github.com/watzon/nova-memory"
+repository = "https://github.com/watzon/mnemo"
 rust-version = "1.85"
 
 [workspace.dependencies]

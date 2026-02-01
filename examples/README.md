@@ -1,6 +1,6 @@
-# Nova Memory Examples
+# Mnemo Examples
 
-This directory contains working examples demonstrating nova-memory integration with various LLM providers and client libraries.
+This directory contains working examples demonstrating mnemo integration with various LLM providers and client libraries.
 
 ## Available Examples
 
@@ -10,7 +10,7 @@ This directory contains working examples demonstrating nova-memory integration w
 
 ## Prerequisites
 
-All examples require nova-memory to be built:
+All examples require mnemo to be built:
 
 ```bash
 cargo build --release

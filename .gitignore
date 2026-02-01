@@ -35,8 +35,8 @@ Cargo.lock
 .fastembed_cache/
 **/.fastembed_cache/
 
-# Nova Memory data directories
-.nova-memory/
+# Mnemo data directories
+.mnemo/
 data/
 
 # Example/test data directories

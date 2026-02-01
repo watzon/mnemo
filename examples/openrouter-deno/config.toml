@@ -1,4 +1,4 @@
-# Nova Memory Test Config - OpenRouter
+# Mnemo Test Config - OpenRouter
 # For testing with OpenRouter as the upstream LLM provider
 
 [storage]

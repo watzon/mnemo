@@ -1,5 +1,5 @@
 /**
- * Add test memories to Nova Memory
+ * Add test memories to Mnemo
  *
  * This script adds some sample memories to test that memory injection
  * is working correctly during chat completions.
@@ -7,10 +7,10 @@
  * Usage:
  *   deno run --allow-run add-memory.ts
  *
- * Note: Requires nova-cli to be built (cargo build --release)
+ * Note: Requires mnemo-cli to be built (cargo build --release)
  */
 
-const CLI_PATH = "../../target/release/nova-cli";
+const CLI_PATH = "../../target/release/mnemo-cli";
 const DATA_DIR = "./test-data";
 
 interface Memory {
@@ -24,7 +24,7 @@ const testMemories: Memory[] = [
     type: "semantic",
   },
   {
-    content: "User mentioned they are building a Rust HTTP proxy called nova-memory for LLM context injection.",
+    content: "User mentioned they are building a Rust HTTP proxy called mnemo for LLM context injection.",
     type: "episodic",
   },
   {
@@ -32,7 +32,7 @@ const testMemories: Memory[] = [
     type: "semantic",
   },
   {
-    content: "To run nova-memory tests: cargo test --workspace -- --test-threads=1",
+    content: "To run mnemo tests: cargo test --workspace -- --test-threads=1",
     type: "procedural",
   },
   {
@@ -63,7 +63,7 @@ async function runCommand(args: string[]): Promise<{ success: boolean; output: s
 
 async function main() {
   console.log("=".repeat(60));
-  console.log("Adding Test Memories to Nova Memory");
+  console.log("Adding Test Memories to Mnemo");
   console.log("=".repeat(60));
   console.log();
 
@@ -71,7 +71,7 @@ async function main() {
   try {
     await Deno.stat(CLI_PATH);
   } catch {
-    console.error(`Error: nova-cli not found at ${CLI_PATH}`);
+    console.error(`Error: mnemo-cli not found at ${CLI_PATH}`);
     console.error("Build it first: cargo build --release");
     Deno.exit(1);
   }

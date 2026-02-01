@@ -1,8 +1,9 @@
 {
-  "active_plan": "/Users/watzon/Projects/personal/nova-memory/.sisyphus/plans/nova-memory.md",
-  "started_at": "2026-01-31T18:08:48.458Z",
+  "active_plan": "/Users/watzon/Projects/personal/nova-memory/.sisyphus/plans/dynamic-passthrough.md",
+  "started_at": "2026-02-01T00:10:44.028Z",
   "session_ids": [
-    "ses_3eac1bac1ffecxNvdhCJE1Ls7J"
+    "ses_3e976604dffeyFtwnwuUOeAvZP",
+    "ses_3e94801b2ffe6kb9DvZC78hpHM"
   ],
-  "plan_name": "nova-memory"
+  "plan_name": "dynamic-passthrough"
 }

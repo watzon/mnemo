@@ -1,6 +1,6 @@
-# Nova Memory + OpenRouter Example
+# Mnemo + OpenRouter Example
 
-This example demonstrates using nova-memory with OpenRouter as the upstream LLM provider via Deno and the OpenAI SDK.
+This example demonstrates using mnemo with OpenRouter as the upstream LLM provider via Deno and the OpenAI SDK.
 
 ## Architecture
 
@@ -13,7 +13,7 @@ This example demonstrates using nova-memory with OpenRouter as the upstream LLM 
            │ http://localhost:9999/p/https://openrouter.ai/api/v1/chat/completions
            ▼
 ┌─────────────────────┐
-│   Nova Memory       │
+│   Mnemo       │
 │   (Rust Proxy)      │
 │   - Extracts query  │
 │   - Searches memories│
@@ -30,7 +30,7 @@ This example demonstrates using nova-memory with OpenRouter as the upstream LLM 
 
 ## Prerequisites
 
-1. **Build nova-memory** (from project root):
+1. **Build mnemo** (from project root):
    ```bash
    cargo build --release
    ```
@@ -46,19 +46,19 @@ This example demonstrates using nova-memory with OpenRouter as the upstream LLM 
 
 ## Quick Start
 
-### Terminal 1: Start Nova Memory
+### Terminal 1: Start Mnemo
 
 ```bash
 cd examples/openrouter-deno
 
 # Start the proxy daemon with test config
-RUST_LOG=info ../../target/release/nova-memory --config config.toml
+RUST_LOG=info ../../target/release/mnemo --config config.toml
 ```
 
 You should see output like:
 ```
-INFO nova_memory::proxy::server: Starting Nova Memory proxy on 127.0.0.1:9999
-INFO nova_memory::proxy::server: Proxy ready to accept connections
+INFO mnemo::proxy::server: Starting Mnemo proxy on 127.0.0.1:9999
+INFO mnemo::proxy::server: Proxy ready to accept connections
 ```
 
 ### Terminal 2: Run Tests
@@ -99,10 +99,10 @@ Then re-run `test-chat.ts` to see memories injected into requests.
 
 ## Verifying Memory Injection
 
-To see what's being injected, run nova-memory with debug logging:
+To see what's being injected, run mnemo with debug logging:
 
 ```bash
-RUST_LOG=debug ../../target/release/nova-memory --config config.toml
+RUST_LOG=debug ../../target/release/mnemo --config config.toml
 ```
 
 Look for log lines containing `Injecting memories` or `<nova-memories>`.
@@ -138,7 +138,7 @@ You can also test directly with curl:
 curl http://localhost:9999/p/https://openrouter.ai/api/v1/chat/completions \
   -H "Authorization: Bearer $OPENROUTER_API_KEY" \
   -H "Content-Type: application/json" \
-  -H "HTTP-Referer: https://github.com/watzon/nova-memory" \
+  -H "HTTP-Referer: https://github.com/watzon/mnemo" \
   -d '{
     "model": "openai/gpt-4o-mini",
     "messages": [{"role": "user", "content": "Hello!"}],

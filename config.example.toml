@@ -1,10 +1,10 @@
-# Nova Memory Configuration Example
+# Mnemo Configuration Example
 # Copy this file to config.toml and customize for your deployment
 
 # =============================================================================
 # STORAGE CONFIGURATION
 # =============================================================================
-# Nova Memory uses a three-tier storage system:
+# Mnemo uses a three-tier storage system:
 # - Hot: In-memory cache for fastest access (Redis-like)
 # - Warm: Local disk storage for moderate access (SQLite/Files)
 # - Cold: Cloud/offsite backup for archival (S3-compatible)
@@ -23,8 +23,8 @@ warm_storage_gb = 50
 cold_enabled = true
 
 # Base directory for all storage data
-# Default: ~/.nova-memory
-data_dir = "~/.nova-memory"
+# Default: ~/.mnemo
+data_dir = "~/.mnemo"
 
 # =============================================================================
 # PROXY CONFIGURATION
