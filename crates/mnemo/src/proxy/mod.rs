@@ -2,6 +2,8 @@ mod capture;
 mod error;
 mod injection;
 mod passthrough;
+mod provider;
+pub mod providers;
 mod server;
 mod streaming;
 
@@ -16,4 +18,5 @@ pub use injection::{
 };
 pub use server::{AppState, ProxyServer, create_router};
 pub use passthrough::UpstreamTarget;
+pub use provider::Provider;
 pub use streaming::{BufferHandle, ExtractedContent, SseEvent, StreamingProxy, TeeResult};

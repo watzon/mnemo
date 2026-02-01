@@ -13,13 +13,17 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-use mnemo::config::ProxyConfig;
+use mnemo::config::{ProxyConfig, RouterConfig};
 use mnemo::memory::retrieval::RetrievedMemory;
 use mnemo::proxy::{AppState, create_router};
 use mnemo::memory::types::{Memory, MemorySource, MemoryType};
 use mnemo::proxy::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
 };
+use mnemo::storage::LanceStore;
+use mnemo::embedding::EmbeddingModel;
+use mnemo::router::MemoryRouter;
+use tokio::sync::Mutex as TokioMutex;
 
 // =============================================================================
 // Test Fixtures
@@ -552,7 +556,12 @@ mod passthrough_tests {
     use super::*;
 
     /// Creates a test router with the given allowed hosts
-    fn create_test_router_with_allowed(allowed_hosts: Vec<String>) -> Router {
+    async fn create_test_router_with_allowed(allowed_hosts: Vec<String>) -> Router {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+        store.create_memories_table().await.unwrap();
+        std::mem::forget(temp_dir);
+
         let config = ProxyConfig {
             listen_addr: "127.0.0.1:0".to_string(),
             upstream_url: None,
@@ -566,6 +575,10 @@ mod passthrough_tests {
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .unwrap(),
+            store: Arc::new(TokioMutex::new(store)),
+            embedding_model: Arc::new(EmbeddingModel::new().unwrap()),
+            router: Arc::new(MemoryRouter::new().unwrap()),
+            router_config: RouterConfig::default(),
         });
         create_router(state)
     }
@@ -585,7 +598,7 @@ mod passthrough_tests {
             .await;
 
         // Create router allowing the mock server's host (127.0.0.1)
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         // Build request to passthrough endpoint
         let target = format!("{}/test", mock_server.uri());
@@ -624,7 +637,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         // Include query string in the passthrough URL
         let target = format!("{}/search?foo=bar&baz=qux", mock_server.uri());
@@ -659,7 +672,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/protected", mock_server.uri());
         let request = Request::builder()
@@ -695,7 +708,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/check", mock_server.uri());
         let request = Request::builder()
@@ -716,7 +729,7 @@ mod passthrough_tests {
     #[tokio::test]
     async fn test_passthrough_blocked_host_returns_403() {
         // Create router that only allows api.openai.com
-        let router = create_test_router_with_allowed(vec!["api.openai.com".to_string()]);
+        let router = create_test_router_with_allowed(vec!["api.openai.com".to_string()]).await;
 
         // Try to access a different host
         let request = Request::builder()
@@ -738,7 +751,7 @@ mod passthrough_tests {
 
     #[tokio::test]
     async fn test_passthrough_invalid_url_returns_400() {
-        let router = create_test_router_with_allowed(vec![]);
+        let router = create_test_router_with_allowed(vec![]).await;
 
         // Invalid URL (no scheme)
         let request = Request::builder()
@@ -760,7 +773,7 @@ mod passthrough_tests {
 
     #[tokio::test]
     async fn test_passthrough_empty_path_returns_404() {
-        let router = create_test_router_with_allowed(vec![]);
+        let router = create_test_router_with_allowed(vec![]).await;
 
         // Empty passthrough path falls through to fallback handler (no upstream configured)
         let request = Request::builder()
@@ -789,7 +802,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/error", mock_server.uri());
         let request = Request::builder()
@@ -823,7 +836,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/notfound", mock_server.uri());
         let request = Request::builder()
@@ -847,7 +860,7 @@ mod passthrough_tests {
     #[tokio::test]
     async fn test_health_endpoint_still_works() {
         // Verify health endpoint works alongside passthrough
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let request = Request::builder()
             .method("GET")
@@ -878,7 +891,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/update", mock_server.uri());
         let request = Request::builder()
@@ -903,7 +916,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/resource/123", mock_server.uri());
         let request = Request::builder()
@@ -932,7 +945,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/with-headers", mock_server.uri());
         let request = Request::builder()
@@ -964,7 +977,7 @@ mod passthrough_tests {
             .await;
 
         // Empty allowlist should allow all hosts
-        let router = create_test_router_with_allowed(vec![]);
+        let router = create_test_router_with_allowed(vec![]).await;
 
         let target = format!("{}/open", mock_server.uri());
         let request = Request::builder()
@@ -992,7 +1005,7 @@ mod passthrough_tests {
             .mount(&mock_server)
             .await;
 
-        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]).await;
 
         let target = format!("{}/echo", mock_server.uri());
         let request = Request::builder()

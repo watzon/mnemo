@@ -18,12 +18,20 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
+use tokio::sync::Mutex as TokioMutex;
 use url::Url;
 
-use crate::config::ProxyConfig;
+use crate::config::{ProxyConfig, RouterConfig};
+use crate::embedding::EmbeddingModel;
 use crate::error::{MnemoError, Result};
+use crate::memory::retrieval::RetrievalPipeline;
+use crate::router::MemoryRouter;
+use crate::storage::LanceStore;
+use serde_json::Value;
 
 use super::passthrough::UpstreamTarget;
+use super::provider::Provider;
+use super::providers::{AnthropicProvider, LLMProvider, OpenAiProvider};
 
 /// Hop-by-hop headers that should not be forwarded to upstream
 const HOP_BY_HOP_HEADERS: &[&str] = &[
@@ -43,17 +51,41 @@ pub struct AppState {
     pub config: ProxyConfig,
     /// HTTP client for upstream requests
     pub client: reqwest::Client,
+    /// Storage backend for memories
+    pub store: Arc<TokioMutex<LanceStore>>,
+    /// Embedding model for vector generation
+    pub embedding_model: Arc<EmbeddingModel>,
+    /// Memory router for query analysis and routing
+    pub router: Arc<MemoryRouter>,
+    /// Router configuration
+    pub router_config: RouterConfig,
 }
 
 /// The main proxy server
 pub struct ProxyServer {
     config: ProxyConfig,
+    store: Arc<TokioMutex<LanceStore>>,
+    embedding_model: Arc<EmbeddingModel>,
+    router: Arc<MemoryRouter>,
+    router_config: RouterConfig,
 }
 
 impl ProxyServer {
-    /// Create a new proxy server with the given configuration
-    pub fn new(config: ProxyConfig) -> Self {
-        Self { config }
+    /// Create a new proxy server with the given configuration and components
+    pub fn new(
+        config: ProxyConfig,
+        store: Arc<TokioMutex<LanceStore>>,
+        embedding_model: Arc<EmbeddingModel>,
+        router: Arc<MemoryRouter>,
+        router_config: RouterConfig,
+    ) -> Self {
+        Self {
+            config,
+            store,
+            embedding_model,
+            router,
+            router_config,
+        }
     }
 
     /// Start the proxy server and listen for requests
@@ -66,6 +98,10 @@ impl ProxyServer {
         let app_state = Arc::new(AppState {
             config: self.config.clone(),
             client,
+            store: self.store.clone(),
+            embedding_model: self.embedding_model.clone(),
+            router: self.router.clone(),
+            router_config: self.router_config.clone(),
         });
 
         let app = create_router(app_state);
@@ -235,8 +271,6 @@ async fn forward_request(
     headers: HeaderMap,
     body: Body,
 ) -> std::result::Result<Response<Body>, super::ProxyError> {
-    // TODO: Memory injection point - before sending request
-
     let mut forwarded_headers = HeaderMap::new();
     for (name, value) in headers.iter() {
         let name_str = name.as_str().to_lowercase();
@@ -259,6 +293,14 @@ async fn forward_request(
     let body_bytes = axum::body::to_bytes(body, usize::MAX)
         .await
         .map_err(|e| super::ProxyError::Request(format!("Failed to read request body: {e}")))?;
+
+    let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes).await {
+        Ok(modified) => modified,
+        Err(e) => {
+            tracing::debug!("Memory injection skipped: {e}");
+            body_bytes.to_vec()
+        }
+    };
 
     let reqwest_method = match method.as_str() {
         "GET" => reqwest::Method::GET,
@@ -286,7 +328,7 @@ async fn forward_request(
         .client
         .request(reqwest_method, target_url.clone())
         .headers(reqwest_headers)
-        .body(body_bytes.to_vec())
+        .body(final_body)
         .send()
         .await
         .map_err(|e| {
@@ -298,8 +340,6 @@ async fn forward_request(
                 super::ProxyError::Network(format!("Request failed: {e}"))
             }
         })?;
-
-    // TODO: Response capture point - before returning response
 
     let status = StatusCode::from_u16(response.status().as_u16())
         .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
@@ -321,6 +361,14 @@ async fn forward_request(
         .await
         .map_err(|e| super::ProxyError::Network(format!("Failed to read response body: {e}")))?;
 
+    if let Some(content) = try_capture_response(&body_bytes, target_url, &headers, &response_body) {
+        tracing::debug!(
+            "Captured response content ({} chars): {}...",
+            content.len(),
+            &content[..content.len().min(100)]
+        );
+    }
+
     let mut builder = Response::builder().status(status);
     for (name, value) in response_headers.iter() {
         builder = builder.header(name, value);
@@ -329,6 +377,83 @@ async fn forward_request(
     builder
         .body(Body::from(response_body))
         .map_err(|e| super::ProxyError::Network(format!("Failed to build response: {e}")))
+}
+
+fn try_capture_response(
+    request_body: &[u8],
+    target_url: &Url,
+    headers: &HeaderMap,
+    response_body: &[u8],
+) -> Option<String> {
+    let request_json: Value = serde_json::from_slice(request_body).ok()?;
+    let provider = Provider::detect(target_url, headers, &request_json);
+
+    let llm_provider: Box<dyn LLMProvider + Send + Sync> = match provider {
+        Provider::OpenAI => Box::new(OpenAiProvider::new()),
+        Provider::Anthropic => Box::new(AnthropicProvider::new()),
+        Provider::Unknown => return None,
+    };
+
+    if let Ok(response_json) = serde_json::from_slice::<Value>(response_body) {
+        if let Some(content) = llm_provider.parse_response_content(&response_json) {
+            if !content.trim().is_empty() {
+                return Some(content);
+            }
+        }
+    }
+
+    if let Ok(response_str) = std::str::from_utf8(response_body) {
+        let extracted = llm_provider.parse_sse_content(response_str);
+        if !extracted.content.trim().is_empty() {
+            return Some(extracted.content);
+        }
+    }
+
+    None
+}
+
+async fn try_inject_memories(
+    state: &AppState,
+    target_url: &Url,
+    headers: &HeaderMap,
+    body_bytes: &[u8],
+) -> crate::error::Result<Vec<u8>> {
+    let mut body_json: Value = serde_json::from_slice(body_bytes)
+        .map_err(|e| crate::error::MnemoError::Proxy(format!("Invalid JSON: {e}")))?;
+
+    let provider = Provider::detect(target_url, headers, &body_json);
+
+    let llm_provider: Box<dyn LLMProvider + Send + Sync> = match provider {
+        Provider::OpenAI => Box::new(OpenAiProvider::new()),
+        Provider::Anthropic => Box::new(AnthropicProvider::new()),
+        Provider::Unknown => {
+            return Ok(body_bytes.to_vec());
+        }
+    };
+
+    let query = match llm_provider.extract_user_query(&body_json) {
+        Some(query) => query,
+        None => return Ok(body_bytes.to_vec()),
+    };
+
+    let store = state.store.lock().await;
+    let mut pipeline =
+        RetrievalPipeline::with_defaults(&store, &state.embedding_model);
+    let memories = pipeline
+        .retrieve(&query, state.router_config.max_memories)
+        .await?;
+    drop(store);
+
+    llm_provider.inject_memories(
+        &mut body_json,
+        &memories,
+        state.config.max_injection_tokens,
+    )?;
+
+    let modified = serde_json::to_vec(&body_json)
+        .map_err(|e| crate::error::MnemoError::Proxy(format!("Failed to serialize: {e}")))?;
+
+    Ok(modified)
 }
 
 /// Create a JSON error response
@@ -388,22 +513,37 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt;
 
-    fn create_test_state() -> Arc<AppState> {
+    async fn create_test_state_with_allowed_hosts(
+        allowed_hosts: Vec<String>,
+    ) -> Arc<AppState> {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+        store.create_memories_table().await.unwrap();
+        std::mem::forget(temp_dir);
+
         Arc::new(AppState {
             config: ProxyConfig {
                 listen_addr: "127.0.0.1:9999".to_string(),
                 upstream_url: None,
-                allowed_hosts: vec![],
+                allowed_hosts,
                 timeout_secs: 30,
                 max_injection_tokens: 2000,
             },
             client: reqwest::Client::new(),
+            store: Arc::new(TokioMutex::new(store)),
+            embedding_model: Arc::new(EmbeddingModel::new().unwrap()),
+            router: Arc::new(MemoryRouter::new().unwrap()),
+            router_config: RouterConfig::default(),
         })
+    }
+
+    async fn create_test_state() -> Arc<AppState> {
+        create_test_state_with_allowed_hosts(Vec::new()).await
     }
 
     #[tokio::test]
     async fn test_health_check() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_router(state);
 
         let response = app
@@ -427,7 +567,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fallback_without_upstream_returns_not_found() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_router(state);
 
         let response = app
@@ -451,7 +591,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dynamic_passthrough_invalid_url() {
-        let state = create_test_state();
+        let state = create_test_state().await;
         let app = create_router(state);
 
         let response = app
@@ -475,16 +615,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_dynamic_passthrough_blocked_host() {
-        let state = Arc::new(AppState {
-            config: ProxyConfig {
-                listen_addr: "127.0.0.1:9999".to_string(),
-                upstream_url: None,
-                allowed_hosts: vec!["api.openai.com".to_string()],
-                timeout_secs: 30,
-                max_injection_tokens: 2000,
-            },
-            client: reqwest::Client::new(),
-        });
+        let state =
+            create_test_state_with_allowed_hosts(vec!["api.openai.com".to_string()]).await;
         let app = create_router(state);
 
         let response = app

@@ -1,6 +1,8 @@
 //! Mnemo Daemon - HTTP proxy for transparent LLM memory injection
 
 use std::path::PathBuf;
+use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
 
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
@@ -140,11 +142,11 @@ async fn serve(config_path: Option<PathBuf>) -> Result<()> {
     }
 
     tracing::info!("Initializing embedding model (this may take a moment on first run)...");
-    let _embedding_model = EmbeddingModel::new()?;
+    let embedding_model = EmbeddingModel::new()?;
     tracing::info!("Embedding model initialized");
 
     tracing::info!("Initializing memory router...");
-    let _router = MemoryRouter::new()?;
+    let router = MemoryRouter::new()?;
     tracing::info!("Memory router initialized");
 
     let mut pipeline_store = LanceStore::connect(data_dir).await?;
@@ -152,7 +154,18 @@ async fn serve(config_path: Option<PathBuf>) -> Result<()> {
     let _ingestion_pipeline = IngestionPipeline::new(pipeline_store)?;
     tracing::info!("Ingestion pipeline initialized");
 
-    let proxy = ProxyServer::new(config.proxy.clone());
+    // Wrap components for sharing across async handlers
+    let store = Arc::new(TokioMutex::new(store));
+    let embedding_model = Arc::new(embedding_model);
+    let router = Arc::new(router);
+
+    let proxy = ProxyServer::new(
+        config.proxy.clone(),
+        store,
+        embedding_model,
+        router,
+        config.router.clone(),
+    );
     tracing::info!("Starting proxy server on {}", config.proxy.listen_addr);
 
     proxy.serve().await?;
