@@ -1,0 +1,64 @@
+{
+  "id": "mnemo",
+  "name": "Mnemo Memory Proxy",
+  "version": "0.1.0",
+  "entry": "./dist/index.js",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "url": {
+        "type": "string",
+        "default": "http://localhost:9999",
+        "description": "URL of the Mnemo memory proxy server"
+      },
+      "enabled": {
+        "type": "boolean",
+        "default": true,
+        "description": "Enable memory injection via Mnemo"
+      },
+      "healthCheckInterval": {
+        "type": "number",
+        "default": 30000,
+        "minimum": 5000,
+        "description": "Health check interval in milliseconds"
+      },
+      "providers": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "openai": {
+            "type": "boolean",
+            "default": true,
+            "description": "Route OpenAI requests through Mnemo"
+          },
+          "anthropic": {
+            "type": "boolean",
+            "default": true,
+            "description": "Route Anthropic requests through Mnemo"
+          }
+        },
+        "description": "Per-provider routing configuration"
+      }
+    }
+  },
+  "uiHints": {
+    "url": {
+      "label": "Mnemo URL",
+      "placeholder": "http://localhost:9999"
+    },
+    "enabled": {
+      "label": "Enable Mnemo"
+    },
+    "healthCheckInterval": {
+      "label": "Health Check Interval (ms)",
+      "placeholder": "30000"
+    },
+    "providers.openai": {
+      "label": "Route OpenAI"
+    },
+    "providers.anthropic": {
+      "label": "Route Anthropic"
+    }
+  }
+}

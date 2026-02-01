@@ -26,6 +26,17 @@ Mnemo is a Rust daemon that sits between your chat client and LLM APIs (OpenAI a
 - **Streaming Support**: Full support for streaming responses from upstream LLMs
 - **CLI Management**: Command-line tool for memory inspection, compaction, and configuration
 
+## Integration Guides
+
+Mnemo works with any tool that supports custom API endpoints. See the [docs](docs/) for detailed integration guides:
+
+| Tool | Description | Guide |
+|------|-------------|-------|
+| **OpenClaw** | Self-hosted AI assistant for messaging platforms | [docs/integrations/openclaw.md](docs/integrations/openclaw.md) |
+| **OpenCode** | Open-source terminal AI coding assistant | [docs/integrations/opencode.md](docs/integrations/opencode.md) |
+
+Official plugins are available in `plugins/` for easier integration.
+
 ## Architecture
 
 ```

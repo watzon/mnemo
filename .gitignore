@@ -43,3 +43,9 @@ data/
 test-data/
 examples/*/test-data/
 .sisyphus/
+
+# Node.js (plugins)
+node_modules/
+plugins/*/node_modules/
+plugins/*/dist/
+*.tsbuildinfo

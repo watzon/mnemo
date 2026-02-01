@@ -1,0 +1,37 @@
+{
+  "name": "opencode-mnemo",
+  "version": "0.1.0",
+  "description": "OpenCode plugin for Mnemo - LLM memory proxy integration",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "opencode",
+    "opencode-plugin",
+    "mnemo",
+    "llm",
+    "memory",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/watzon/mnemo"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=1.0.0"
+  },
+  "devDependencies": {
+    "@opencode-ai/plugin": "^1.1.0",
+    "@types/node": "^25.1.0",
+    "typescript": "^5.7.0"
+  }
+}

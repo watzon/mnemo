@@ -1,0 +1,30 @@
+{
+  "name": "@mnemo/openclaw",
+  "version": "0.1.0",
+  "description": "OpenClaw plugin for Mnemo memory proxy integration",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "clean": "rm -rf dist"
+  },
+  "keywords": [
+    "openclaw",
+    "mnemo",
+    "memory",
+    "llm",
+    "proxy"
+  ],
+  "author": "",
+  "license": "MIT",
+  "openclaw": {
+    "extensions": ["./dist/index.js"]
+  },
+  "devDependencies": {
+    "typescript": "^5.3.0"
+  },
+  "peerDependencies": {
+    "openclaw": "*"
+  }
+}
