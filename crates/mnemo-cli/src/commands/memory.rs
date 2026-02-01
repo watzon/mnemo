@@ -1,6 +1,6 @@
 use clap::{Parser, Subcommand};
 use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
-use mnemo::{
+use mnemo_server::{
     memory::types::{Memory, MemorySource, MemoryType, StorageTier},
     storage::LanceStore,
 };
@@ -323,7 +323,7 @@ impl MemoryCommand {
             }
         };
 
-        let embedding_model = mnemo::embedding::EmbeddingModel::new()?;
+        let embedding_model = mnemo_server::embedding::EmbeddingModel::new()?;
         let embedding = embedding_model.embed(&args.text)?;
 
         let memory = Memory::new(

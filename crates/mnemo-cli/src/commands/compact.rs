@@ -1,6 +1,6 @@
 use clap::Parser;
 use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
-use mnemo::{
+use mnemo_server::{
     memory::types::StorageTier,
     storage::{Compactor, LanceStore},
 };

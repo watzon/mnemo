@@ -107,7 +107,7 @@ cp target/release/mnemo-cli /usr/local/bin/
 ### Using Cargo
 
 ```bash
-cargo install mnemo mnemo-cli
+cargo install mnemo-server mnemo-cli
 ```
 
 ## Usage

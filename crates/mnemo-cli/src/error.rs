@@ -23,8 +23,8 @@ impl From<&str> for CliError {
     }
 }
 
-impl From<mnemo::MnemoError> for CliError {
-    fn from(e: mnemo::MnemoError) -> Self {
+impl From<mnemo_server::MnemoError> for CliError {
+    fn from(e: mnemo_server::MnemoError) -> Self {
         CliError(e.to_string())
     }
 }

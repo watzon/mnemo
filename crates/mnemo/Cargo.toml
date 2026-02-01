@@ -1,12 +1,15 @@
 [package]
-name = "mnemo"
+name = "mnemo-server"
 version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Mnemo daemon - HTTP proxy that gives your LLM long-term memory"
+description = "A transparent HTTP proxy that gives your LLM long-term memory"
+readme = "../../README.md"
+keywords = ["llm", "memory", "proxy", "openai", "anthropic"]
+categories = ["command-line-utilities", "web-programming::http-server", "development-tools"]
 
 [[bin]]
 name = "mnemo"

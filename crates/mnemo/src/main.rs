@@ -7,12 +7,13 @@ use tokio::sync::Mutex as TokioMutex;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use mnemo::config::Config;
-use mnemo::embedding::EmbeddingModel;
-use mnemo::error::Result;
-use mnemo::proxy::ProxyServer;
-use mnemo::router::MemoryRouter;
-use mnemo::storage::LanceStore;
+use mnemo_server::config::Config;
+use mnemo_server::embedding::EmbeddingModel;
+use mnemo_server::error::Result;
+use mnemo_server::proxy::ProxyServer;
+use mnemo_server::router::MemoryRouter;
+use mnemo_server::storage::LanceStore;
+use mnemo_server::MnemoError;
 
 /// Mnemo - Transparent HTTP proxy that gives your LLM long-term memory
 #[derive(Parser)]
@@ -67,14 +68,14 @@ fn load_config(config_path: Option<PathBuf>) -> Result<Config> {
     if let Some(path) = config_path {
         tracing::info!("Loading config from: {}", path.display());
         let content = std::fs::read_to_string(&path).map_err(|e| {
-            mnemo::MnemoError::Config(format!(
+            MnemoError::Config(format!(
                 "Failed to read config file {}: {}",
                 path.display(),
                 e
             ))
         })?;
         let config: Config = toml::from_str(&content)
-            .map_err(|e| mnemo::MnemoError::Config(format!("Failed to parse config: {e}")))?;
+            .map_err(|e| MnemoError::Config(format!("Failed to parse config: {e}")))?;
         Ok(config)
     } else {
         let default_paths = [
@@ -87,14 +88,14 @@ fn load_config(config_path: Option<PathBuf>) -> Result<Config> {
             if path_opt.exists() {
                 tracing::info!("Loading config from: {}", path_opt.display());
                 let content = std::fs::read_to_string(path_opt).map_err(|e| {
-                    mnemo::MnemoError::Config(format!(
+                    MnemoError::Config(format!(
                         "Failed to read config file {}: {}",
                         path_opt.display(),
                         e
                     ))
                 })?;
                 let config: Config = toml::from_str(&content).map_err(|e| {
-                    mnemo::MnemoError::Config(format!("Failed to parse config: {e}"))
+                    MnemoError::Config(format!("Failed to parse config: {e}"))
                 })?;
                 return Ok(config);
             }
@@ -115,7 +116,7 @@ async fn serve(config_path: Option<PathBuf>) -> Result<()> {
     tracing::info!("Initializing storage at: {}", data_dir.display());
 
     std::fs::create_dir_all(data_dir).map_err(|e| {
-        mnemo::MnemoError::Storage(format!(
+        MnemoError::Storage(format!(
             "Failed to create data directory {}: {}",
             data_dir.display(),
             e

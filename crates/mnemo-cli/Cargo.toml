@@ -6,7 +6,10 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "Mnemo CLI - Management tool for the mnemo daemon"
+description = "CLI management tool for the Mnemo LLM memory proxy"
+readme = "../../README.md"
+keywords = ["llm", "memory", "cli", "mnemo"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "mnemo-cli"
@@ -25,4 +28,4 @@ chrono = { workspace = true }
 clap = { workspace = true }
 comfy-table = { workspace = true }
 dirs = { workspace = true }
-mnemo = { path = "../mnemo" }
+mnemo-server = { version = "0.1.0", path = "../mnemo" }

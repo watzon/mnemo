@@ -2,7 +2,7 @@ use std::path::Path;
 
 use clap::Parser;
 use comfy_table::{ContentArrangement, Table, presets::UTF8_FULL_CONDENSED};
-use mnemo::config::Config;
+use mnemo_server::config::Config;
 
 use crate::error::CliResult;
 use crate::output::OutputFormat;
