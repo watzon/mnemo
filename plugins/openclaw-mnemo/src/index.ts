@@ -191,8 +191,7 @@ export default function register(api: PluginApi): void {
         .command("configure")
         .description("Show configuration instructions for routing through Mnemo")
         .option("--url <url>", "Mnemo proxy URL", "http://localhost:9999")
-        .action(async (...args: unknown[]) => {
-          const options = (args[0] as { url?: string }) ?? {};
+        .action(async (options: { url?: string }) => {
           const mnemoUrl = options.url ?? config.url;
           const urls = generateProviderUrls(mnemoUrl);
 

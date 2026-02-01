@@ -110,10 +110,8 @@ function log(
  */
 export const MnemoPlugin: Plugin = async ({ client }) => {
   const mnemoHost = process.env.MNEMO_HOST ?? MNEMO_DEFAULT_HOST;
-  const mnemoPort = parseInt(
-    process.env.MNEMO_PORT ?? String(MNEMO_DEFAULT_PORT),
-    10
-  );
+  const parsedPort = parseInt(process.env.MNEMO_PORT ?? "", 10);
+  const mnemoPort = Number.isNaN(parsedPort) ? MNEMO_DEFAULT_PORT : parsedPort;
 
   const initialHealth = await checkMnemoHealth(mnemoHost, mnemoPort);
 

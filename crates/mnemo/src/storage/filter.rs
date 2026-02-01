@@ -58,6 +58,12 @@ impl MemoryFilter {
     /// Filter by session ID with NULL awareness.
     /// When `Some(id)`: matches memories for that session OR global memories (conversation_id IS NULL)
     /// When `None`: matches only global memories (conversation_id IS NULL)
+    ///
+    /// # Security Note
+    /// The session_id is interpolated directly into a SQL WHERE clause. Callers MUST validate
+    /// session IDs before passing them here. Use `SessionId::try_from()` to ensure the value
+    /// contains only safe characters (`[a-zA-Z0-9_-]`). Passing unvalidated user input could
+    /// allow SQL injection.
     pub fn with_session_filter(mut self, session_id: Option<String>) -> Self {
         self.session_filter = Some(session_id);
         self
