@@ -37,13 +37,32 @@ data_dir = "~/.nova-memory"
 # Default: 127.0.0.1:9999
 listen_addr = "127.0.0.1:9999"
 
-# Upstream LLM API URL (REQUIRED)
-# This is the actual LLM API endpoint that requests will be forwarded to
+# Upstream LLM API URL (OPTIONAL)
+# This is the default LLM API endpoint that requests will be forwarded to.
+# When using dynamic passthrough (/p/{url} routes), this can be omitted.
+# If set, requests not matching /p/* will be forwarded to this URL.
 # Examples:
 #   - OpenAI: https://api.openai.com/v1
 #   - Anthropic: https://api.anthropic.com/v1
 #   - Local: http://localhost:11434/v1
-upstream_url = "https://api.openai.com/v1"
+# upstream_url = "https://api.openai.com/v1"
+
+# Host allowlist for dynamic passthrough security
+# - Empty list allows ALL hosts (not recommended for production)
+# - Exact matches: "api.openai.com"
+# - Wildcard subdomains: "*.anthropic.com" (matches api.anthropic.com, etc.)
+#
+# SECURITY WARNING: Without allowed_hosts, the proxy can be used to access
+# any HTTP(S) endpoint, potentially bypassing firewalls.
+allowed_hosts = [
+    "api.openai.com",
+    "api.anthropic.com",
+    "*.groq.com",
+]
+
+# Dynamic passthrough examples:
+#   curl http://localhost:9999/p/https://api.openai.com/v1/chat/completions
+#   curl http://localhost:9999/p/https://api.anthropic.com/v1/messages
 
 # Request timeout in seconds
 # Default: 300 (5 minutes)

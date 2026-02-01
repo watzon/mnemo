@@ -504,7 +504,7 @@ upstream_url = "https://api.example.com"
         assert_eq!(parsed.storage.hot_cache_gb, 20);
         assert_eq!(parsed.storage.warm_storage_gb, 100);
         assert_eq!(parsed.proxy.listen_addr, "0.0.0.0:8080");
-        assert_eq!(parsed.proxy.upstream_url, "https://api.example.com");
+        assert_eq!(parsed.proxy.upstream_url, Some("https://api.example.com".to_string()));
     }
 }
 

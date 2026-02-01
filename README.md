@@ -11,6 +11,7 @@ Nova Memory is a Rust daemon that sits between your chat client and LLM API (Ope
 ## Features
 
 - **Transparent Proxy**: Drop-in replacement for LLM API endpoints - no client changes needed
+- **Multi-Provider Support**: Route requests to any LLM provider via `/p/{url}` dynamic passthrough with host allowlist security
 - **Automatic Memory Injection**: Relevant memories are injected into system prompts as structured XML
 - **Response Capture**: Assistant responses are automatically stored as episodic memories
 - **Semantic Search**: Uses e5-small embeddings via fastembed for efficient local vector search
@@ -102,9 +103,11 @@ data_dir = "~/.nova-memory"
 
 [proxy]
 listen_addr = "127.0.0.1:9999"
-upstream_url = "https://api.openai.com/v1"
+# upstream_url is optional with dynamic passthrough
+# upstream_url = "https://api.openai.com/v1"
 timeout_secs = 300
 max_injection_tokens = 2000
+allowed_hosts = ["api.openai.com", "api.anthropic.com"]
 
 [router]
 strategy = "semantic"
@@ -145,6 +148,26 @@ export OPENAI_API_URL="http://127.0.0.1:9999"
 ```
 
 Most clients (OpenAI SDK, LangChain, etc.) respect the `OPENAI_BASE_URL` or similar environment variables.
+
+### Dynamic Passthrough
+
+Route requests to any LLM provider without changing configuration:
+
+```bash
+# OpenAI
+curl http://localhost:9999/p/https://api.openai.com/v1/chat/completions \
+  -H "Authorization: Bearer $OPENAI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "gpt-4", "messages": [{"role": "user", "content": "Hello"}]}'
+
+# Anthropic
+curl http://localhost:9999/p/https://api.anthropic.com/v1/messages \
+  -H "x-api-key: $ANTHROPIC_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model": "claude-3-opus-20240229", "max_tokens": 100, "messages": [{"role": "user", "content": "Hello"}]}'
+```
+
+The `allowed_hosts` configuration restricts which upstream hosts can be proxied. Wildcards are supported (e.g., `*.openai.com`). An empty list allows all hosts.
 
 ### Memory Injection
 

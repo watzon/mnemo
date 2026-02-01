@@ -9,9 +9,13 @@ use axum::{
     http::{Request, StatusCode},
     routing::get,
 };
+use std::sync::Arc;
 use tower::ServiceExt;
+use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
+use nova_memory::config::ProxyConfig;
 use nova_memory::memory::retrieval::RetrievedMemory;
+use nova_memory::proxy::{AppState, create_router};
 use nova_memory::memory::types::{Memory, MemorySource, MemoryType};
 use nova_memory::proxy::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
@@ -537,5 +541,469 @@ mod error_handling_tests {
 
         let query = extract_user_query(&request);
         assert!(query.is_none());
+    }
+}
+
+// =============================================================================
+// Dynamic Passthrough Tests (using wiremock)
+// =============================================================================
+
+mod passthrough_tests {
+    use super::*;
+
+    /// Creates a test router with the given allowed hosts
+    fn create_test_router_with_allowed(allowed_hosts: Vec<String>) -> Router {
+        let config = ProxyConfig {
+            listen_addr: "127.0.0.1:0".to_string(),
+            upstream_url: None,
+            timeout_secs: 10,
+            max_injection_tokens: 2000,
+            allowed_hosts,
+        };
+        let state = Arc::new(AppState {
+            config,
+            client: reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(10))
+                .build()
+                .unwrap(),
+        });
+        create_router(state)
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_basic_post() {
+        // Start mock server
+        let mock_server = MockServer::start().await;
+
+        // Configure mock response
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/test"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"success": true})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Create router allowing the mock server's host (127.0.0.1)
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        // Build request to passthrough endpoint
+        let target = format!("{}/test", mock_server.uri());
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/p/{}", target))
+            .header("Content-Type", "application/json")
+            .body(Body::from(r#"{"test": "data"}"#))
+            .unwrap();
+
+        // Execute
+        let response = router.oneshot(request).await.unwrap();
+
+        // Assert
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["success"], true);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_get_with_query_string() {
+        let mock_server = MockServer::start().await;
+
+        // Configure mock to verify query string is received
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/search"))
+            .and(matchers::query_param("foo", "bar"))
+            .and(matchers::query_param("baz", "qux"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"query": "received"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        // Include query string in the passthrough URL
+        let target = format!("{}/search?foo=bar&baz=qux", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["query"], "received");
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_headers_forwarded() {
+        let mock_server = MockServer::start().await;
+
+        // Configure mock to require Authorization header
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/protected"))
+            .and(matchers::header("Authorization", "Bearer test-token"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"authorized": true})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/protected", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .header("Authorization", "Bearer test-token")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["authorized"], true);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_hop_by_hop_stripped() {
+        let mock_server = MockServer::start().await;
+
+        // Mock that should NOT receive the Connection header
+        // If Connection header arrives, this would fail
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/check"))
+            .and(matchers::header_exists("X-Custom-Header"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"headers": "ok"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/check", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .header("Connection", "keep-alive") // Should be stripped
+            .header("X-Custom-Header", "should-pass") // Should be forwarded
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        // Request should succeed, meaning Connection was stripped
+        // and X-Custom-Header was passed through
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_blocked_host_returns_403() {
+        // Create router that only allows api.openai.com
+        let router = create_test_router_with_allowed(vec!["api.openai.com".to_string()]);
+
+        // Try to access a different host
+        let request = Request::builder()
+            .method("GET")
+            .uri("/p/https://evil.example.com/api")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::FORBIDDEN);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(body_str.contains("host_not_allowed"));
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_invalid_url_returns_400() {
+        let router = create_test_router_with_allowed(vec![]);
+
+        // Invalid URL (no scheme)
+        let request = Request::builder()
+            .method("GET")
+            .uri("/p/not-a-valid-url")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(body_str.contains("invalid_url"));
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_empty_path_returns_404() {
+        let router = create_test_router_with_allowed(vec![]);
+
+        // Empty passthrough path falls through to fallback handler (no upstream configured)
+        let request = Request::builder()
+            .method("GET")
+            .uri("/p/")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        // Falls through to fallback, returns 404 (no upstream configured)
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_upstream_error_returned() {
+        let mock_server = MockServer::start().await;
+
+        // Configure mock to return 500 error
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/error"))
+            .respond_with(
+                ResponseTemplate::new(500)
+                    .set_body_json(serde_json::json!({"error": "Internal Server Error"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/error", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        // Should pass through the 500 status from upstream
+        assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["error"], "Internal Server Error");
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_upstream_404_returned() {
+        let mock_server = MockServer::start().await;
+
+        // Configure mock to return 404
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/notfound"))
+            .respond_with(
+                ResponseTemplate::new(404).set_body_json(serde_json::json!({"error": "Not Found"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/notfound", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        // Should pass through the 404 status from upstream
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(body["error"], "Not Found");
+    }
+
+    #[tokio::test]
+    async fn test_health_endpoint_still_works() {
+        // Verify health endpoint works alongside passthrough
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let request = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let body_str = String::from_utf8(body_bytes.to_vec()).unwrap();
+        assert!(body_str.contains("\"status\":\"ok\""));
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_put_method() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(matchers::method("PUT"))
+            .and(matchers::path("/update"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"updated": true})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/update", mock_server.uri());
+        let request = Request::builder()
+            .method("PUT")
+            .uri(format!("/p/{}", target))
+            .header("Content-Type", "application/json")
+            .body(Body::from(r#"{"data": "updated"}"#))
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_delete_method() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(matchers::method("DELETE"))
+            .and(matchers::path("/resource/123"))
+            .respond_with(ResponseTemplate::new(204))
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/resource/123", mock_server.uri());
+        let request = Request::builder()
+            .method("DELETE")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::NO_CONTENT);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_response_headers_forwarded() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/with-headers"))
+            .respond_with(
+                ResponseTemplate::new(200)
+                    .set_body_json(serde_json::json!({"data": "test"}))
+                    .insert_header("X-Custom-Response", "header-value")
+                    .insert_header("X-Request-Id", "12345"),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/with-headers", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("X-Custom-Response").unwrap(),
+            "header-value"
+        );
+        assert_eq!(response.headers().get("X-Request-Id").unwrap(), "12345");
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_empty_allowlist_allows_all() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(matchers::method("GET"))
+            .and(matchers::path("/open"))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"access": "allowed"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        // Empty allowlist should allow all hosts
+        let router = create_test_router_with_allowed(vec![]);
+
+        let target = format!("{}/open", mock_server.uri());
+        let request = Request::builder()
+            .method("GET")
+            .uri(format!("/p/{}", target))
+            .body(Body::empty())
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_body_forwarded() {
+        let mock_server = MockServer::start().await;
+
+        // Configure mock to verify body content
+        Mock::given(matchers::method("POST"))
+            .and(matchers::path("/echo"))
+            .and(matchers::body_json(serde_json::json!({"message": "hello world"})))
+            .respond_with(
+                ResponseTemplate::new(200).set_body_json(serde_json::json!({"echo": "received"})),
+            )
+            .mount(&mock_server)
+            .await;
+
+        let router = create_test_router_with_allowed(vec!["127.0.0.1".to_string()]);
+
+        let target = format!("{}/echo", mock_server.uri());
+        let request = Request::builder()
+            .method("POST")
+            .uri(format!("/p/{}", target))
+            .header("Content-Type", "application/json")
+            .body(Body::from(r#"{"message": "hello world"}"#))
+            .unwrap();
+
+        let response = router.oneshot(request).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
     }
 }

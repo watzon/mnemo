@@ -38,3 +38,7 @@ Cargo.lock
 # Nova Memory data directories
 .nova-memory/
 data/
+
+# Example/test data directories
+test-data/
+examples/*/test-data/

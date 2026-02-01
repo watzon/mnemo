@@ -100,11 +100,7 @@ impl ConfigCommand {
                 proxy_table.add_row(["listen_addr", &config.proxy.listen_addr]);
                 proxy_table.add_row([
                     "upstream_url",
-                    if config.proxy.upstream_url.is_empty() {
-                        "(not set)"
-                    } else {
-                        &config.proxy.upstream_url
-                    },
+                    config.proxy.upstream_url.as_deref().unwrap_or("(not set)"),
                 ]);
                 proxy_table.add_row(["timeout_secs", &config.proxy.timeout_secs.to_string()]);
                 proxy_table.add_row([

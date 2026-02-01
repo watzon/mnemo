@@ -1,0 +1,32 @@
+# Nova Memory Test Config - OpenRouter
+# For testing with OpenRouter as the upstream LLM provider
+
+[storage]
+hot_cache_gb = 1
+warm_storage_gb = 5
+cold_enabled = false
+data_dir = "./test-data"
+
+[proxy]
+listen_addr = "127.0.0.1:9999"
+timeout_secs = 300
+max_injection_tokens = 2000
+
+# Allow OpenRouter and common providers
+allowed_hosts = [
+    "openrouter.ai",
+    "*.openrouter.ai",
+    "api.openai.com",
+    "api.anthropic.com",
+]
+
+[router]
+strategy = "semantic"
+max_memories = 5
+relevance_threshold = 0.5
+
+[embedding]
+provider = "local"
+model = "sentence-transformers/all-MiniLM-L6-v2"
+dimension = 384
+batch_size = 32

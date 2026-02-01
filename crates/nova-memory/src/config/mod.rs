@@ -70,8 +70,12 @@ pub struct ProxyConfig {
     /// Address to listen on (e.g., "127.0.0.1:9999")
     #[serde(default = "default_listen_addr")]
     pub listen_addr: String,
-    /// Upstream LLM API URL (required)
-    pub upstream_url: String,
+    /// Upstream LLM API URL (optional - can be specified per-request)
+    #[serde(default)]
+    pub upstream_url: Option<String>,
+    /// Allowed upstream hosts (empty = allow all)
+    #[serde(default)]
+    pub allowed_hosts: Vec<String>,
     /// Request timeout in seconds
     #[serde(default = "default_timeout_secs")]
     pub timeout_secs: u64,
@@ -84,7 +88,8 @@ impl Default for ProxyConfig {
     fn default() -> Self {
         Self {
             listen_addr: default_listen_addr(),
-            upstream_url: String::new(),
+            upstream_url: None,
+            allowed_hosts: Vec::new(),
             timeout_secs: default_timeout_secs(),
             max_injection_tokens: default_max_injection_tokens(),
         }
@@ -182,6 +187,8 @@ mod tests {
         assert_eq!(config.storage.warm_storage_gb, 50);
         assert!(config.storage.cold_enabled);
         assert_eq!(config.proxy.listen_addr, "127.0.0.1:9999");
+        assert!(config.proxy.upstream_url.is_none());
+        assert!(config.proxy.allowed_hosts.is_empty());
         assert_eq!(config.proxy.timeout_secs, 300);
         assert_eq!(config.proxy.max_injection_tokens, 2000);
         assert_eq!(config.router.max_memories, 10);
@@ -225,7 +232,11 @@ batch_size = 64
         assert_eq!(config.storage.data_dir, PathBuf::from("/tmp/nova-memory"));
 
         assert_eq!(config.proxy.listen_addr, "0.0.0.0:8080");
-        assert_eq!(config.proxy.upstream_url, "https://api.openai.com/v1");
+        assert_eq!(
+            config.proxy.upstream_url,
+            Some("https://api.openai.com/v1".to_string())
+        );
+        assert!(config.proxy.allowed_hosts.is_empty());
         assert_eq!(config.proxy.timeout_secs, 60);
         assert_eq!(config.proxy.max_injection_tokens, 4000);
 
@@ -252,6 +263,49 @@ upstream_url = "https://api.example.com"
         // Check defaults are applied
         assert_eq!(config.storage.hot_cache_gb, 10);
         assert_eq!(config.proxy.listen_addr, "127.0.0.1:9999");
-        assert_eq!(config.proxy.upstream_url, "https://api.example.com");
+        assert_eq!(
+            config.proxy.upstream_url,
+            Some("https://api.example.com".to_string())
+        );
+        assert!(config.proxy.allowed_hosts.is_empty());
+    }
+
+    #[test]
+    fn test_upstream_url_none_when_not_provided() {
+        // Test that upstream_url is None when not provided in TOML
+        let toml_str = r#"
+[proxy]
+listen_addr = "127.0.0.1:9999"
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.proxy.upstream_url.is_none());
+    }
+
+    #[test]
+    fn test_allowed_hosts_defaults_to_empty() {
+        // Test that allowed_hosts defaults to empty Vec when not provided
+        let toml_str = r#"
+[proxy]
+upstream_url = "https://api.openai.com/v1"
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.proxy.allowed_hosts.is_empty());
+    }
+
+    #[test]
+    fn test_allowed_hosts_parses_from_toml() {
+        // Test that allowed_hosts parses correctly from TOML array
+        let toml_str = r#"
+[proxy]
+upstream_url = "https://api.openai.com/v1"
+allowed_hosts = ["api.openai.com", "api.anthropic.com"]
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert_eq!(config.proxy.allowed_hosts.len(), 2);
+        assert_eq!(config.proxy.allowed_hosts[0], "api.openai.com");
+        assert_eq!(config.proxy.allowed_hosts[1], "api.anthropic.com");
     }
 }
