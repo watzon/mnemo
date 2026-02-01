@@ -10,7 +10,6 @@ use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitEx
 use mnemo::config::Config;
 use mnemo::embedding::EmbeddingModel;
 use mnemo::error::Result;
-use mnemo::memory::ingestion::IngestionPipeline;
 use mnemo::proxy::ProxyServer;
 use mnemo::router::MemoryRouter;
 use mnemo::storage::LanceStore;
@@ -148,11 +147,6 @@ async fn serve(config_path: Option<PathBuf>) -> Result<()> {
     tracing::info!("Initializing memory router...");
     let router = MemoryRouter::new()?;
     tracing::info!("Memory router initialized");
-
-    let mut pipeline_store = LanceStore::connect(data_dir).await?;
-    pipeline_store.open_memories_table().await?;
-    let _ingestion_pipeline = IngestionPipeline::new(pipeline_store)?;
-    tracing::info!("Ingestion pipeline initialized");
 
     // Wrap components for sharing across async handlers
     let store = Arc::new(TokioMutex::new(store));

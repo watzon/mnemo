@@ -22,7 +22,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_full_pipeline_creates_memory() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -45,7 +45,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_with_conversation_source() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -64,7 +64,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_with_file_source() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -82,7 +82,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_with_web_source() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -100,7 +100,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_generates_valid_embedding() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -121,7 +121,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_extracts_entities() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -145,7 +145,7 @@ mod end_to_end_pipeline_tests {
             let mut store = LanceStore::connect(&path).await.unwrap();
             store.create_memories_table().await.unwrap();
 
-            let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+            let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
             let result = pipeline
                 .ingest(
                     "This memory should be persisted in LanceDB storage.",
@@ -172,7 +172,7 @@ mod end_to_end_pipeline_tests {
     #[tokio::test]
     async fn test_pipeline_multiple_ingestions() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let texts = [
             "First memory about Rust programming.",
@@ -199,7 +199,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_filter_empty_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline.ingest("", MemorySource::Manual, None).await;
         assert!(result.is_ok());
@@ -212,7 +212,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_filter_whitespace_only_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let whitespaces = ["   ", "\n\t  \n", "     ", "\t\t\t"];
 
@@ -229,7 +229,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_filter_short_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Content shorter than 10 characters should be filtered
         let result = pipeline.ingest("short", MemorySource::Manual, None).await;
@@ -243,7 +243,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_accept_minimum_length_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Content with exactly 10 characters should be accepted
         let result = pipeline
@@ -259,7 +259,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_accept_long_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let long_text = "This is a very long piece of content that should definitely be accepted by the filtering mechanism.".repeat(10);
         let result = pipeline
@@ -273,7 +273,7 @@ mod content_filtering_tests {
     #[tokio::test]
     async fn test_filter_content_at_boundary() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // 9 characters - should be filtered
         let result = pipeline
@@ -310,7 +310,7 @@ mod memory_type_assignment_tests {
     #[tokio::test]
     async fn test_conversation_source_assigns_episodic() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let sources = [MemorySource::Conversation];
 
@@ -335,7 +335,7 @@ mod memory_type_assignment_tests {
     #[tokio::test]
     async fn test_non_conversation_sources_assign_semantic() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let sources = [MemorySource::Manual, MemorySource::File, MemorySource::Web];
 
@@ -356,7 +356,7 @@ mod memory_type_assignment_tests {
     #[tokio::test]
     async fn test_conversation_id_preserved() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let conversation_id = "conversation-123-abc";
         let result = pipeline
@@ -378,7 +378,7 @@ mod memory_type_assignment_tests {
     #[tokio::test]
     async fn test_no_conversation_id_for_non_conversation() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -402,7 +402,7 @@ mod compression_level_tests {
     #[tokio::test]
     async fn test_short_content_gets_full_compression() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest("Short text.", MemorySource::Manual, None)
@@ -419,7 +419,7 @@ mod compression_level_tests {
     #[tokio::test]
     async fn test_medium_content_gets_summary_compression() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let text = "a".repeat(250); // 250 characters
         let result = pipeline.ingest(&text, MemorySource::Manual, None).await;
@@ -435,7 +435,7 @@ mod compression_level_tests {
     #[tokio::test]
     async fn test_long_content_gets_keywords_compression() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let text = "a".repeat(1000); // 1000 characters
         let result = pipeline.ingest(&text, MemorySource::Manual, None).await;
@@ -451,7 +451,7 @@ mod compression_level_tests {
     #[tokio::test]
     async fn test_very_long_content_gets_hash_compression() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let text = "a".repeat(2500); // 2500 characters
         let result = pipeline.ingest(&text, MemorySource::Manual, None).await;
@@ -471,7 +471,7 @@ mod weight_calculation_tests {
     #[tokio::test]
     async fn test_weight_in_valid_range() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -492,7 +492,7 @@ mod weight_calculation_tests {
     #[tokio::test]
     async fn test_base_weight_minimum() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Content with no entities should have base weight
         let result = pipeline
@@ -514,7 +514,7 @@ mod weight_calculation_tests {
     #[tokio::test]
     async fn test_weight_boosted_by_entities() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Content with named entities should have higher weight
         let result = pipeline
@@ -536,7 +536,7 @@ mod weight_calculation_tests {
     #[tokio::test]
     async fn test_weight_capped_at_maximum() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Even with many entities, weight should not exceed 1.0
         let result = pipeline
@@ -562,7 +562,7 @@ mod storage_tier_tests {
     #[tokio::test]
     async fn test_new_memory_gets_hot_tier() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -587,7 +587,7 @@ mod edge_case_tests {
     #[tokio::test]
     async fn test_unicode_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let unicode_texts = [
             "Hello 世界! 🌍",
@@ -607,7 +607,7 @@ mod edge_case_tests {
     #[tokio::test]
     async fn test_special_characters_in_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let special_text = "Special chars: @#$%^&*()_+-=[]{}|;':\",./<>?";
         let result = pipeline
@@ -620,7 +620,7 @@ mod edge_case_tests {
     #[tokio::test]
     async fn test_multiline_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let multiline_text = "Line 1\nLine 2\nLine 3\n\nLine after blank";
         let result = pipeline
@@ -638,7 +638,7 @@ mod edge_case_tests {
     #[tokio::test]
     async fn test_very_long_content() {
         let (store, _dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Test with content that's long but within BERT's 512 token limit
         // BERT tokenizer typically produces ~1.3 tokens per word, so 300 words is safe

@@ -24,7 +24,9 @@ use url::Url;
 use crate::config::{ProxyConfig, RouterConfig};
 use crate::embedding::EmbeddingModel;
 use crate::error::{MnemoError, Result};
+use crate::memory::ingestion::IngestionPipeline;
 use crate::memory::retrieval::RetrievalPipeline;
+use crate::memory::types::MemorySource;
 use crate::router::MemoryRouter;
 use crate::storage::LanceStore;
 use crate::storage::filter::MemoryFilter;
@@ -61,6 +63,8 @@ pub struct AppState {
     pub router: Arc<MemoryRouter>,
     /// Router configuration
     pub router_config: RouterConfig,
+    /// Ingestion pipeline for storing captured responses
+    pub ingestion_pipeline: Arc<TokioMutex<IngestionPipeline>>,
 }
 
 /// The main proxy server
@@ -97,6 +101,12 @@ impl ProxyServer {
             .build()
             .map_err(|e| MnemoError::Proxy(format!("Failed to create HTTP client: {e}")))?;
 
+        let ingestion_pipeline = Arc::new(TokioMutex::new(IngestionPipeline::new(
+            self.store.clone(),
+            self.embedding_model.clone(),
+            self.router.clone(),
+        )));
+
         let app_state = Arc::new(AppState {
             config: self.config.clone(),
             client,
@@ -104,6 +114,7 @@ impl ProxyServer {
             embedding_model: self.embedding_model.clone(),
             router: self.router.clone(),
             router_config: self.router_config.clone(),
+            ingestion_pipeline,
         });
 
         let app = create_router(app_state);
@@ -308,7 +319,13 @@ async fn forward_request(
         })
         .flatten();
 
-    let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes, session_id).await {
+    let promote_to_global = headers
+        .get("x-mnemo-promote-response")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s.eq_ignore_ascii_case("true"))
+        .unwrap_or(false);
+
+    let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes, session_id.clone()).await {
         Ok(modified) => modified,
         Err(e) => {
             tracing::debug!("Memory injection skipped: {e}");
@@ -379,7 +396,17 @@ async fn forward_request(
         .await
         .map_err(|e| super::ProxyError::Network(format!("Failed to read response body: {e}")))?;
 
-    if let Some(content) = try_capture_response(&body_bytes, target_url, &headers, &response_body) {
+    if let Some(content) = try_capture_response(
+        state,
+        &body_bytes,
+        target_url,
+        &headers,
+        &response_body,
+        session_id,
+        promote_to_global,
+    )
+    .await
+    {
         tracing::debug!(
             "Captured response content ({} chars): {}...",
             content.len(),
@@ -397,11 +424,14 @@ async fn forward_request(
         .map_err(|e| super::ProxyError::Network(format!("Failed to build response: {e}")))
 }
 
-fn try_capture_response(
+async fn try_capture_response(
+    state: &AppState,
     request_body: &[u8],
     target_url: &Url,
     headers: &HeaderMap,
     response_body: &[u8],
+    session_id: Option<String>,
+    promote_to_global: bool,
 ) -> Option<String> {
     let request_json: Value = serde_json::from_slice(request_body).ok()?;
     let provider = Provider::detect(target_url, headers, &request_json);
@@ -412,22 +442,60 @@ fn try_capture_response(
         Provider::Unknown => return None,
     };
 
-    if let Ok(response_json) = serde_json::from_slice::<Value>(response_body) {
+    let result = if let Ok(response_json) = serde_json::from_slice::<Value>(response_body) {
         if let Some(content) = llm_provider.parse_response_content(&response_json) {
             if !content.trim().is_empty() {
-                return Some(content);
+                Some(content)
+            } else {
+                None
             }
+        } else {
+            None
         }
-    }
-
-    if let Ok(response_str) = std::str::from_utf8(response_body) {
+    } else if let Ok(response_str) = std::str::from_utf8(response_body) {
         let extracted = llm_provider.parse_sse_content(response_str);
         if !extracted.content.trim().is_empty() {
-            return Some(extracted.content);
+            Some(extracted.content)
+        } else {
+            None
         }
+    } else {
+        None
+    };
+
+    if let Some(ref content) = result {
+        let final_session_id = if promote_to_global {
+            None
+        } else {
+            session_id
+        };
+        let pipeline = state.ingestion_pipeline.clone();
+        let content_clone = content.clone();
+
+        tokio::spawn(async move {
+            let mut pipeline = pipeline.lock().await;
+            match pipeline
+                .ingest(&content_clone, MemorySource::Conversation, final_session_id)
+                .await
+            {
+                Ok(Some(memory)) => {
+                    tracing::debug!(
+                        "Ingested response as memory {} (session: {:?})",
+                        memory.id,
+                        memory.conversation_id
+                    );
+                }
+                Ok(None) => {
+                    tracing::debug!("Response filtered by ingestion pipeline");
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to ingest response: {}", e);
+                }
+            }
+        });
     }
 
-    None
+    result
 }
 
 async fn try_inject_memories(
@@ -534,6 +602,15 @@ mod tests {
         store.create_memories_table().await.unwrap();
         std::mem::forget(temp_dir);
 
+        let store = Arc::new(TokioMutex::new(store));
+        let embedding_model = Arc::new(EmbeddingModel::new().unwrap());
+        let router = Arc::new(MemoryRouter::new().unwrap());
+        let ingestion_pipeline = Arc::new(TokioMutex::new(IngestionPipeline::new(
+            store.clone(),
+            embedding_model.clone(),
+            router.clone(),
+        )));
+
         Arc::new(AppState {
             config: ProxyConfig {
                 listen_addr: "127.0.0.1:9999".to_string(),
@@ -543,10 +620,11 @@ mod tests {
                 max_injection_tokens: 2000,
             },
             client: reqwest::Client::new(),
-            store: Arc::new(TokioMutex::new(store)),
-            embedding_model: Arc::new(EmbeddingModel::new().unwrap()),
-            router: Arc::new(MemoryRouter::new().unwrap()),
+            store,
+            embedding_model,
+            router,
             router_config: RouterConfig::default(),
+            ingestion_pipeline,
         })
     }
 

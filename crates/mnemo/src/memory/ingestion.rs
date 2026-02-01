@@ -3,6 +3,9 @@
 //! Orchestrates the full ingestion flow: routing, embedding generation,
 //! memory creation, and storage.
 
+use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
+
 use crate::embedding::EmbeddingModel;
 use crate::error::Result;
 use crate::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
@@ -21,20 +24,36 @@ const MIN_CONTENT_LENGTH: usize = 10;
 /// 4. Memory creation with calculated weight and compression level
 /// 5. Storage in LanceDB
 pub struct IngestionPipeline {
-    router: MemoryRouter,
-    embedding_model: EmbeddingModel,
-    store: LanceStore,
+    router: Arc<MemoryRouter>,
+    embedding_model: Arc<EmbeddingModel>,
+    store: Arc<TokioMutex<LanceStore>>,
 }
 
 impl IngestionPipeline {
-    /// Create a new ingestion pipeline with the given store.
+    /// Create a new ingestion pipeline with shared components.
     ///
-    /// Initializes the router (NER model) and embedding model (e5-small).
-    pub fn new(store: LanceStore) -> Result<Self> {
-        Ok(Self {
-            router: MemoryRouter::new()?,
-            embedding_model: EmbeddingModel::new()?,
+    /// Uses shared router (NER model) and embedding model (e5-small) instances.
+    pub fn new(
+        store: Arc<TokioMutex<LanceStore>>,
+        embedding_model: Arc<EmbeddingModel>,
+        router: Arc<MemoryRouter>,
+    ) -> Self {
+        Self {
+            router,
+            embedding_model,
             store,
+        }
+    }
+
+    /// Create a new ingestion pipeline with owned components.
+    ///
+    /// Initializes its own router (NER model) and embedding model (e5-small).
+    /// Primarily used for testing.
+    pub fn new_owned(store: LanceStore) -> Result<Self> {
+        Ok(Self {
+            router: Arc::new(MemoryRouter::new()?),
+            embedding_model: Arc::new(EmbeddingModel::new()?),
+            store: Arc::new(TokioMutex::new(store)),
         })
     }
 
@@ -88,7 +107,7 @@ impl IngestionPipeline {
         memory.compression = compression;
         memory.tier = StorageTier::Hot;
 
-        self.store.insert(&memory).await?;
+        self.store.lock().await.insert(&memory).await?;
 
         Ok(Some(memory))
     }
@@ -124,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_creates_memory_with_correct_fields() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -154,7 +173,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_conversation_creates_episodic_memory() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -173,7 +192,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_filters_empty_content() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline.ingest("", MemorySource::Manual, None).await;
         assert!(result.is_ok());
@@ -189,7 +208,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_filters_short_content() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline.ingest("short", MemorySource::Manual, None).await;
         assert!(result.is_ok());
@@ -244,7 +263,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_generates_embedding() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -264,7 +283,7 @@ mod tests {
     #[tokio::test]
     async fn test_ingest_extracts_entities() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -281,7 +300,7 @@ mod tests {
     #[tokio::test]
     async fn test_weight_calculation() {
         let store = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -302,7 +321,7 @@ mod tests {
         let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
         store.create_memories_table().await.unwrap();
 
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(

@@ -569,16 +569,27 @@ mod passthrough_tests {
             max_injection_tokens: 2000,
             allowed_hosts,
         };
+        let store = Arc::new(TokioMutex::new(store));
+        let embedding_model = Arc::new(EmbeddingModel::new().unwrap());
+        let router = Arc::new(MemoryRouter::new().unwrap());
+        let ingestion_pipeline = Arc::new(TokioMutex::new(
+            mnemo::memory::ingestion::IngestionPipeline::new(
+                store.clone(),
+                embedding_model.clone(),
+                router.clone(),
+            ),
+        ));
         let state = Arc::new(AppState {
             config,
             client: reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(10))
                 .build()
                 .unwrap(),
-            store: Arc::new(TokioMutex::new(store)),
-            embedding_model: Arc::new(EmbeddingModel::new().unwrap()),
-            router: Arc::new(MemoryRouter::new().unwrap()),
+            store,
+            embedding_model,
+            router,
             router_config: RouterConfig::default(),
+            ingestion_pipeline,
         });
         create_router(state)
     }

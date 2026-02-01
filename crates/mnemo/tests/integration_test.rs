@@ -171,7 +171,7 @@ mod full_proxy_flow_tests {
         let (store, temp_dir) = create_test_store().await;
         let store_path = temp_dir.path().to_path_buf();
 
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let _ = pipeline
             .ingest(
@@ -283,7 +283,7 @@ mod full_proxy_flow_tests {
             "Content should pass ingestion filters"
         );
 
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
         let result = pipeline
             .ingest(
                 &extracted.content,
@@ -465,7 +465,7 @@ mod ingestion_tests {
     #[tokio::test]
     async fn test_ingestion_pipeline_creates_complete_memory() {
         let (store, _temp_dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let result = pipeline
             .ingest(
@@ -499,7 +499,7 @@ mod ingestion_tests {
     #[tokio::test]
     async fn test_ingestion_filters() {
         let (store, _temp_dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Empty content
         let empty = pipeline
@@ -536,7 +536,7 @@ mod ingestion_tests {
     #[tokio::test]
     async fn test_compression_levels() {
         let (store, _temp_dir) = create_test_store().await;
-        let mut pipeline = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut pipeline = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         // Short content -> Full compression
         let short_mem = pipeline
@@ -923,7 +923,7 @@ mod full_pipeline_tests {
         let (store, temp_dir) = create_test_store().await;
         let store_path = temp_dir.path().to_path_buf();
 
-        let mut ingestion = IngestionPipeline::new(store).expect("Failed to create pipeline");
+        let mut ingestion = IngestionPipeline::new_owned(store).expect("Failed to create pipeline");
 
         let memories_to_ingest = vec![
             "The user prefers Python for data science projects.",
