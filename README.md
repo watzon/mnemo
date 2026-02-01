@@ -10,12 +10,13 @@
 
 > A transparent HTTP proxy that gives your LLM long-term memory
 
-Mnemo is a Rust daemon that sits between your chat client and LLM API (OpenAI-compatible), automatically injecting relevant memories into system prompts and capturing assistant responses for future recall. It uses semantic search with local embeddings to retrieve contextually relevant information without modifying your existing workflow.
+Mnemo is a Rust daemon that sits between your chat client and LLM APIs (OpenAI and Anthropic), automatically injecting relevant memories into system prompts and capturing assistant responses for future recall. It uses semantic search with local embeddings to retrieve contextually relevant information without modifying your existing workflow.
 
 ## Features
 
 - **Transparent Proxy**: Drop-in replacement for LLM API endpoints - no client changes needed
-- **Multi-Provider Support**: Route requests to any LLM provider via `/p/{url}` dynamic passthrough with host allowlist security
+- **Multi-Provider Support**: Native support for OpenAI and Anthropic style APIs with automatic provider detection. Route to any provider via `/p/{url}` dynamic passthrough.
+- **Automatic Provider Detection**: Intelligently detects whether requests are for OpenAI or Anthropic based on URL, headers, or request body structure
 - **Automatic Memory Injection**: Relevant memories are injected into system prompts as structured XML
 - **Response Capture**: Assistant responses are automatically stored as episodic memories
 - **Semantic Search**: Uses e5-small embeddings via fastembed for efficient local vector search
@@ -120,7 +121,7 @@ relevance_threshold = 0.7
 
 [embedding]
 provider = "local"
-model = "sentence-transformers/all-MiniLM-L6-v2"
+# Model is e5-small with 384 dimensions (configured internally)
 dimension = 384
 batch_size = 32
 ```
@@ -173,14 +174,35 @@ curl http://localhost:9999/p/https://api.anthropic.com/v1/messages \
 
 The `allowed_hosts` configuration restricts which upstream hosts can be proxied. Wildcards are supported (e.g., `*.openai.com`). An empty list allows all hosts.
 
+### Provider Detection
+
+Mnemo automatically detects the LLM provider for each request using a priority-based heuristic:
+
+1. **URL Detection**: Requests to `*.openai.com` → OpenAI, `*.anthropic.com` → Anthropic
+2. **Header Detection**: `x-api-key` header → Anthropic, `Authorization: Bearer` → OpenAI  
+3. **Body Detection**: Top-level `system` field → Anthropic, `messages[].role == "system"` → OpenAI
+
+This means you can use the dynamic passthrough (`/p/{url}`) without any additional configuration - Mnemo will automatically handle the differences between providers.
+
+**Provider-specific behavior:**
+- **OpenAI**: Memories injected into the first system message in the `messages` array
+- **Anthropic**: Memories injected into the top-level `system` field
+
+If the provider cannot be detected, requests pass through unmodified (fail-open behavior).
+
 ### Memory Injection
 
-When you send a request, Mnemo:
+When you send a request to either OpenAI or Anthropic, Mnemo:
 
-1. Extracts the user query from the messages array
-2. Performs semantic search for relevant memories
-3. Formats matches as XML and injects into the system prompt
-4. Forwards the modified request to the upstream LLM
+1. Detects the provider from URL, headers, or body structure
+2. Extracts the user query from the messages array
+3. Performs semantic search for relevant memories
+4. Formats matches as XML and injects into the system prompt
+5. Forwards the modified request to the upstream LLM
+
+Memory injection is provider-aware:
+- **OpenAI**: Appends to the system message in the `messages` array
+- **Anthropic**: Appends to the top-level `system` field
 
 **Example injected memory block:**
 
@@ -344,16 +366,18 @@ RUST_LOG=debug cargo run --bin mnemo
 ### Testing
 
 ```bash
-# Run all tests
-cargo test
+# Run all tests (single-threaded required for ML model tests)
+cargo test --workspace -- --test-threads=1
 
 # Run tests for specific crate
-cargo test -p mnemo
+cargo test -p mnemo -- --test-threads=1
 cargo test -p mnemo-cli
 
 # Run with output
-cargo test -- --nocapture
+cargo test --workspace -- --test-threads=1 --nocapture
 ```
+
+**Note:** The `--test-threads=1` flag is required because ML model loading (embeddings, NER) can conflict when tests run in parallel.
 
 ## License
 
