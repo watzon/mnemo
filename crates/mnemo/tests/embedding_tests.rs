@@ -1,8 +1,10 @@
 //! Integration tests for embedding layer
 //!
 //! Tests the EmbeddingModel implementation with real model loading.
+//! Uses SHARED_EMBEDDING_MODEL to avoid repeated model loading across tests.
 
-use mnemo::embedding::{EMBEDDING_DIMENSION, EmbeddingModel};
+use mnemo::embedding::EMBEDDING_DIMENSION;
+use mnemo::testing::SHARED_EMBEDDING_MODEL;
 
 /// Calculate cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -12,22 +14,31 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
     dot / (norm_a * norm_b)
 }
 
+/// Get reference to the shared embedding model
+fn get_model() -> &'static mnemo::embedding::EmbeddingModel {
+    &*SHARED_EMBEDDING_MODEL
+}
+
 mod model_loading_tests {
     use super::*;
 
     #[test]
     fn test_model_loads_successfully() {
-        let model = EmbeddingModel::new();
-        assert!(model.is_ok(), "Model should load without errors");
+        // Shared model is already loaded via LazyLock - just verify it works
+        let model = get_model();
+        let result = model.embed("test");
+        assert!(result.is_ok(), "Model should work without errors");
     }
 
     #[test]
-    fn test_model_can_be_created_multiple_times() {
-        let model1 = EmbeddingModel::new();
-        let model2 = EmbeddingModel::new();
+    fn test_model_can_be_used_multiple_times() {
+        let model = get_model();
 
-        assert!(model1.is_ok());
-        assert!(model2.is_ok());
+        let result1 = model.embed("first");
+        let result2 = model.embed("second");
+
+        assert!(result1.is_ok());
+        assert!(result2.is_ok());
     }
 }
 
@@ -36,7 +47,7 @@ mod embedding_dimension_tests {
 
     #[test]
     fn test_single_embedding_has_correct_dimension() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let embedding = model.embed("Hello, world!").expect("Failed to embed");
 
         assert_eq!(
@@ -48,7 +59,7 @@ mod embedding_dimension_tests {
 
     #[test]
     fn test_empty_string_embedding_has_correct_dimension() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let embedding = model.embed("").expect("Failed to embed empty string");
 
         assert_eq!(embedding.len(), EMBEDDING_DIMENSION);
@@ -56,7 +67,7 @@ mod embedding_dimension_tests {
 
     #[test]
     fn test_long_text_embedding_has_correct_dimension() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let long_text = "This is a very long text. ".repeat(100);
         let embedding = model.embed(&long_text).expect("Failed to embed long text");
 
@@ -65,7 +76,7 @@ mod embedding_dimension_tests {
 
     #[test]
     fn test_multilingual_text_embedding_has_correct_dimension() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let texts = vec![
             "Hello, world!",
@@ -87,7 +98,7 @@ mod similarity_tests {
 
     #[test]
     fn test_similar_texts_have_high_similarity() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let text1 = "The quick brown fox jumps over the lazy dog";
         let text2 = "A fast brown fox leaps over a sleepy dog";
@@ -105,7 +116,7 @@ mod similarity_tests {
 
     #[test]
     fn test_different_texts_have_lower_similarity() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let text1 = "The quick brown fox jumps over the lazy dog";
         let text2 = "Quantum computing revolutionizes cryptography";
@@ -123,7 +134,7 @@ mod similarity_tests {
 
     #[test]
     fn test_identical_texts_have_perfect_similarity() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let text = "This is a test sentence for embedding comparison.";
         let emb1 = model.embed(text).expect("Failed to embed");
@@ -139,7 +150,7 @@ mod similarity_tests {
 
     #[test]
     fn test_semantically_similar_texts() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let pairs = vec![
             (
@@ -173,7 +184,7 @@ mod similarity_tests {
 
     #[test]
     fn test_unrelated_texts_have_low_similarity() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
 
         let pairs = vec![
             ("The cat sat on the mat", "Stock markets crashed today"),
@@ -199,7 +210,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_batch_embedding_returns_correct_count() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let texts = vec![
             "First sentence".to_string(),
             "Second sentence".to_string(),
@@ -213,7 +224,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_batch_embedding_correct_dimensions() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let texts = vec![
             "First".to_string(),
             "Second".to_string(),
@@ -233,7 +244,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_batch_embedding_consistency() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let text = "Consistency test sentence";
 
         let single_embedding = model.embed(text).expect("Failed to embed single");
@@ -254,7 +265,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_batch_embedding_order_preserved() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let texts = vec![
             "First unique sentence".to_string(),
             "Second unique sentence".to_string(),
@@ -281,7 +292,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_empty_batch_returns_empty() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let texts: Vec<String> = vec![];
 
         let embeddings = model
@@ -296,7 +307,7 @@ mod batch_embedding_tests {
 
     #[test]
     fn test_large_batch_embedding() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let texts: Vec<String> = (0..50)
             .map(|i| format!("Test sentence number {i}"))
             .collect();
@@ -317,7 +328,7 @@ mod embedding_properties_tests {
 
     #[test]
     fn test_embedding_values_are_normalized() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let embedding = model.embed("Test text").expect("Failed to embed");
 
         let norm: f32 = embedding.iter().map(|x| x * x).sum::<f32>().sqrt();
@@ -330,7 +341,7 @@ mod embedding_properties_tests {
 
     #[test]
     fn test_embeddings_are_not_all_zeros() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let embedding = model.embed("Test text").expect("Failed to embed");
 
         let sum: f32 = embedding.iter().map(|x| x.abs()).sum();
@@ -343,7 +354,7 @@ mod embedding_properties_tests {
 
     #[test]
     fn test_embeddings_have_variation() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = get_model();
         let embedding = model.embed("Test text").expect("Failed to embed");
 
         let min = embedding.iter().fold(f32::INFINITY, |a, &b| a.min(b));

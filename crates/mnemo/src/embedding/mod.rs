@@ -1,22 +1,28 @@
+use std::sync::Mutex;
+
 use crate::MnemoError;
 use fastembed::{EmbeddingModel as FastEmbedModel, InitOptions, TextEmbedding};
 
 pub const EMBEDDING_DIMENSION: usize = 384;
 
 pub struct EmbeddingModel {
-    model: TextEmbedding,
+    model: Mutex<TextEmbedding>,
 }
 
 impl EmbeddingModel {
     pub fn new() -> Result<Self, MnemoError> {
         let model = TextEmbedding::try_new(InitOptions::new(FastEmbedModel::MultilingualE5Small))
             .map_err(|e| MnemoError::Embedding(e.to_string()))?;
-        Ok(Self { model })
+        Ok(Self {
+            model: Mutex::new(model),
+        })
     }
 
-    pub fn embed(&mut self, text: &str) -> Result<Vec<f32>, MnemoError> {
+    pub fn embed(&self, text: &str) -> Result<Vec<f32>, MnemoError> {
         let embeddings = self
             .model
+            .lock()
+            .map_err(|e| MnemoError::Embedding(format!("Mutex poisoned: {e}")))?
             .embed(vec![text.to_string()], None)
             .map_err(|e| MnemoError::Embedding(e.to_string()))?;
         embeddings
@@ -25,8 +31,10 @@ impl EmbeddingModel {
             .ok_or_else(|| MnemoError::Embedding("No embedding returned".to_string()))
     }
 
-    pub fn embed_batch(&mut self, texts: &[String]) -> Result<Vec<Vec<f32>>, MnemoError> {
+    pub fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, MnemoError> {
         self.model
+            .lock()
+            .map_err(|e| MnemoError::Embedding(format!("Mutex poisoned: {e}")))?
             .embed(texts, None)
             .map_err(|e| MnemoError::Embedding(e.to_string()))
     }
@@ -52,7 +60,7 @@ mod tests {
 
     #[test]
     fn test_embed_returns_correct_dimension() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = EmbeddingModel::new().expect("Failed to load model");
         let embedding = model.embed("Hello, world!").expect("Failed to embed");
         assert_eq!(
             embedding.len(),
@@ -63,7 +71,7 @@ mod tests {
 
     #[test]
     fn test_similar_texts_have_high_similarity() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = EmbeddingModel::new().expect("Failed to load model");
 
         let text1 = "The quick brown fox jumps over the lazy dog";
         let text2 = "A fast brown fox leaps over a sleepy dog";
@@ -88,7 +96,7 @@ mod tests {
 
     #[test]
     fn test_batch_embedding() {
-        let mut model = EmbeddingModel::new().expect("Failed to load model");
+        let model = EmbeddingModel::new().expect("Failed to load model");
         let texts = vec![
             "First sentence".to_string(),
             "Second sentence".to_string(),

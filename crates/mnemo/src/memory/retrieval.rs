@@ -75,7 +75,7 @@ impl Default for RetrievalConfig {
 /// Stage 2: Rerank by effective weight (combines similarity + weight factors)
 pub struct RetrievalPipeline<'a> {
     store: &'a LanceStore,
-    embedding_model: &'a mut EmbeddingModel,
+    embedding_model: &'a EmbeddingModel,
     config: RetrievalConfig,
 }
 
@@ -83,7 +83,7 @@ impl<'a> RetrievalPipeline<'a> {
     /// Create a new retrieval pipeline
     pub fn new(
         store: &'a LanceStore,
-        embedding_model: &'a mut EmbeddingModel,
+        embedding_model: &'a EmbeddingModel,
         config: RetrievalConfig,
     ) -> Self {
         Self {
@@ -94,7 +94,7 @@ impl<'a> RetrievalPipeline<'a> {
     }
 
     /// Create a pipeline with default configuration
-    pub fn with_defaults(store: &'a LanceStore, embedding_model: &'a mut EmbeddingModel) -> Self {
+    pub fn with_defaults(store: &'a LanceStore, embedding_model: &'a EmbeddingModel) -> Self {
         Self::new(store, embedding_model, RetrievalConfig::default())
     }
 

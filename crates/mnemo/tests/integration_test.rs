@@ -21,8 +21,8 @@ use serde_json::json;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use mnemo::embedding::EmbeddingModel;
 use mnemo::memory::ingestion::IngestionPipeline;
+use mnemo::testing::SHARED_EMBEDDING_MODEL;
 use mnemo::memory::retrieval::{RetrievalPipeline, RetrievedMemory};
 use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use mnemo::proxy::{
@@ -204,8 +204,7 @@ mod full_proxy_flow_tests {
         let count = store.count_by_tier(StorageTier::Hot).await.unwrap();
         assert!(count >= 3, "Should have at least 3 memories ingested");
 
-        let mut embedding_model = EmbeddingModel::new().expect("Failed to create embedding model");
-        let mut retrieval = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
+        let mut retrieval = RetrievalPipeline::with_defaults(&store, &*SHARED_EMBEDDING_MODEL);
 
         let results = retrieval
             .retrieve("What programming language does the user prefer?", 5)
@@ -949,8 +948,7 @@ mod full_pipeline_tests {
         let count = store.count_by_tier(StorageTier::Hot).await.unwrap();
         assert_eq!(count, 5);
 
-        let mut embedding_model = EmbeddingModel::new().expect("Failed to create embedding model");
-        let mut retrieval = RetrievalPipeline::with_defaults(&store, &mut embedding_model);
+        let mut retrieval = RetrievalPipeline::with_defaults(&store, &*SHARED_EMBEDDING_MODEL);
 
         let results = retrieval
             .retrieve("What editor does the user prefer?", 3)

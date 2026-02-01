@@ -254,7 +254,7 @@ impl MemoryCommand {
             }
         };
 
-        let mut embedding_model = mnemo::embedding::EmbeddingModel::new()?;
+        let embedding_model = mnemo::embedding::EmbeddingModel::new()?;
         let embedding = embedding_model.embed(&args.text)?;
 
         let memory = Memory::new(

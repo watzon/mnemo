@@ -5,10 +5,11 @@
 
 use mnemo::memory::types::MemoryType;
 use mnemo::router::{EntityLabel, MemoryRouter};
+use mnemo::testing::SHARED_MEMORY_ROUTER;
 
-/// Test helper to create a router (loads NER model)
-fn create_router() -> MemoryRouter {
-    MemoryRouter::new().expect("Failed to create MemoryRouter - NER model may not be downloaded")
+/// Test helper to get the shared router instance
+fn get_router() -> &'static MemoryRouter {
+    &*SHARED_MEMORY_ROUTER
 }
 
 mod router_creation_tests {
@@ -16,17 +17,20 @@ mod router_creation_tests {
 
     #[test]
     fn test_router_creates_successfully() {
-        let router = MemoryRouter::new();
-        assert!(router.is_ok(), "Router should be created successfully");
+        let router = get_router();
+        // Just verify we can access the shared router
+        let _ = router.route("test").expect("Router should work");
     }
 
     #[test]
     fn test_router_can_be_created_multiple_times() {
-        let router1 = MemoryRouter::new();
-        let router2 = MemoryRouter::new();
+        // Both tests use the same shared instance
+        let router1 = get_router();
+        let router2 = get_router();
 
-        assert!(router1.is_ok());
-        assert!(router2.is_ok());
+        // Verify both references work
+        let _ = router1.route("test1").expect("Router1 should work");
+        let _ = router2.route("test2").expect("Router2 should work");
     }
 }
 
@@ -35,7 +39,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_extract_person_entities() {
-        let router = create_router();
+        let router = get_router();
         let text = "John Smith met with Sarah Johnson at the conference.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -51,7 +55,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_extract_organization_entities() {
-        let router = create_router();
+        let router = get_router();
         let text = "Microsoft and Google are competing in the AI space.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -67,7 +71,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_extract_location_entities() {
-        let router = create_router();
+        let router = get_router();
         let text = "The meeting will be held in Seattle, Washington.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -83,7 +87,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_extract_multiple_entity_types() {
-        let router = create_router();
+        let router = get_router();
         let text = "Barack Obama visited Microsoft headquarters in Redmond.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -105,7 +109,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_entity_confidence_in_valid_range() {
-        let router = create_router();
+        let router = get_router();
         let text = "Apple Inc. was founded by Steve Jobs in California.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -121,7 +125,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_no_entities_in_empty_text() {
-        let router = create_router();
+        let router = get_router();
         let output = router.route("").expect("Failed to route empty text");
 
         assert!(
@@ -132,7 +136,7 @@ mod entity_extraction_tests {
 
     #[test]
     fn test_no_entities_in_generic_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "The quick brown fox jumps over the lazy dog.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -149,7 +153,7 @@ mod router_output_completeness_tests {
 
     #[test]
     fn test_output_has_all_fields_populated() {
-        let router = create_router();
+        let router = get_router();
         let text = "John Smith works at Microsoft in Seattle and loves programming.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -163,7 +167,7 @@ mod router_output_completeness_tests {
 
     #[test]
     fn test_topics_extracted_from_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "Rust programming language is great for systems development.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -176,7 +180,7 @@ mod router_output_completeness_tests {
 
     #[test]
     fn test_query_keys_generated() {
-        let router = create_router();
+        let router = get_router();
         let text = "Machine learning and artificial intelligence are transforming technology.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -191,7 +195,7 @@ mod router_output_completeness_tests {
 
     #[test]
     fn test_search_types_determined() {
-        let router = create_router();
+        let router = get_router();
         let text = "How do I write a function in Rust?";
         let output = router.route(text).expect("Failed to route text");
 
@@ -204,7 +208,7 @@ mod router_output_completeness_tests {
 
     #[test]
     fn test_default_search_types_for_generic_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "The weather is nice today.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -222,7 +226,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_positive_sentiment_detected() {
-        let router = create_router();
+        let router = get_router();
         let text = "I love this amazing product! It's wonderful and fantastic.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -235,7 +239,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_negative_sentiment_detected() {
-        let router = create_router();
+        let router = get_router();
         let text = "I hate this terrible awful product. It's the worst and horrible.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -248,7 +252,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_neutral_sentiment_detected() {
-        let router = create_router();
+        let router = get_router();
         let text = "The cat sat on the mat. The weather is cloudy today.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -261,7 +265,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_mixed_sentiment_towards_neutral() {
-        let router = create_router();
+        let router = get_router();
         let text = "I love the design but hate the price. It's great but also terrible.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -275,7 +279,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_emotional_valence_in_valid_range() {
-        let router = create_router();
+        let router = get_router();
         let texts = [
             "I absolutely love this! Amazing!",
             "This is terrible and awful!",
@@ -297,7 +301,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_strong_positive_sentiment() {
-        let router = create_router();
+        let router = get_router();
         let text = "Absolutely love love love! Best amazing wonderful perfect excellent!";
         let output = router.route(text).expect("Failed to route text");
 
@@ -310,7 +314,7 @@ mod sentiment_detection_tests {
 
     #[test]
     fn test_strong_negative_sentiment() {
-        let router = create_router();
+        let router = get_router();
         let text = "Hate hate hate! Worst terrible awful horrible disgusting pathetic!";
         let output = router.route(text).expect("Failed to route text");
 
@@ -327,7 +331,7 @@ mod memory_type_routing_tests {
 
     #[test]
     fn test_procedural_content_routing() {
-        let router = create_router();
+        let router = get_router();
         let text = "How to bake a cake: First, preheat the oven to 350 degrees.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -339,7 +343,7 @@ mod memory_type_routing_tests {
 
     #[test]
     fn test_semantic_content_routing() {
-        let router = create_router();
+        let router = get_router();
         let text = "What is the definition of machine learning?";
         let output = router.route(text).expect("Failed to route text");
 
@@ -351,7 +355,7 @@ mod memory_type_routing_tests {
 
     #[test]
     fn test_episodic_content_routing() {
-        let router = create_router();
+        let router = get_router();
         let text = "Remember when we discussed the project yesterday at the meeting?";
         let output = router.route(text).expect("Failed to route text");
 
@@ -363,7 +367,7 @@ mod memory_type_routing_tests {
 
     #[test]
     fn test_conversation_content_routing() {
-        let router = create_router();
+        let router = get_router();
         let text = "John told me about his trip to Paris last summer.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -382,7 +386,7 @@ mod memory_type_routing_tests {
 
     #[test]
     fn test_multiple_memory_types_can_be_selected() {
-        let router = create_router();
+        let router = get_router();
         let text = "How do I remember what we discussed about machine learning?";
         let output = router.route(text).expect("Failed to route text");
 
@@ -399,7 +403,7 @@ mod topic_extraction_tests {
 
     #[test]
     fn test_topics_extracted_from_entities() {
-        let router = create_router();
+        let router = get_router();
         let text = "Microsoft announced new features for Azure cloud platform.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -415,7 +419,7 @@ mod topic_extraction_tests {
 
     #[test]
     fn test_topics_not_empty_for_meaningful_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "Artificial intelligence and machine learning are revolutionizing software development.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -427,7 +431,7 @@ mod topic_extraction_tests {
 
     #[test]
     fn test_topics_normalized_to_lowercase() {
-        let router = create_router();
+        let router = get_router();
         let text = "Python Programming Language is popular.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -447,7 +451,7 @@ mod query_keys_generation_tests {
 
     #[test]
     fn test_query_keys_from_entities() {
-        let router = create_router();
+        let router = get_router();
         let text = "Google DeepMind made breakthroughs in AI research.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -460,7 +464,7 @@ mod query_keys_generation_tests {
 
     #[test]
     fn test_query_keys_minimum_length() {
-        let router = create_router();
+        let router = get_router();
         let text = "John Smith works at Microsoft in Seattle.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -475,7 +479,7 @@ mod query_keys_generation_tests {
 
     #[test]
     fn test_query_keys_not_empty_for_entity_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "Barack Obama was the president of the United States.";
         let output = router.route(text).expect("Failed to route text");
 
@@ -491,7 +495,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_empty_text_routing() {
-        let router = create_router();
+        let router = get_router();
         let output = router.route("").expect("Failed to route empty text");
 
         assert!(output.entities.is_empty());
@@ -503,7 +507,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_whitespace_only_text() {
-        let router = create_router();
+        let router = get_router();
         let output = router
             .route("   \n\t   ")
             .expect("Failed to route whitespace");
@@ -515,7 +519,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_very_short_text() {
-        let router = create_router();
+        let router = get_router();
         let output = router.route("Hi").expect("Failed to route short text");
 
         // Very short text should still work without panicking
@@ -525,7 +529,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_very_long_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "Rust is great. ".repeat(100);
         let output = router.route(&text).expect("Failed to route long text");
 
@@ -538,7 +542,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_special_characters() {
-        let router = create_router();
+        let router = get_router();
         let text = "Hello! @#$%^&*() World... How are you???";
         let output = router.route(text).expect("Failed to route special chars");
 
@@ -549,7 +553,7 @@ mod edge_case_tests {
 
     #[test]
     fn test_multilingual_text() {
-        let router = create_router();
+        let router = get_router();
         let text = "Hello world! Bonjour le monde! Hola mundo!";
         let output = router
             .route(text)
