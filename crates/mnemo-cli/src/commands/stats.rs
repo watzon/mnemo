@@ -6,14 +6,56 @@ use crate::error::CliResult;
 use crate::output::OutputFormat;
 
 #[derive(Parser)]
-pub struct StatsCommand;
+pub struct StatsCommand {
+    #[clap(long, help = "Filter statistics to a specific session/project")]
+    pub session: Option<String>,
+
+    #[clap(
+        long,
+        help = "Show only global memory statistics",
+        conflicts_with = "session"
+    )]
+    pub global: bool,
+}
 
 impl StatsCommand {
     pub async fn execute(&self, store: &LanceStore, format: OutputFormat) -> CliResult<()> {
-        let hot_count = store.count_by_tier(StorageTier::Hot).await?;
-        let warm_count = store.count_by_tier(StorageTier::Warm).await?;
-        let cold_count = store.count_by_tier(StorageTier::Cold).await?;
-        let total_count = store.total_count().await?;
+        let (hot_count, warm_count, cold_count, total_count) =
+            if self.session.is_some() || self.global {
+                let mut hot = Vec::new();
+                let mut warm = Vec::new();
+                let mut cold = Vec::new();
+
+                for tier in [StorageTier::Hot, StorageTier::Warm, StorageTier::Cold] {
+                    let memories = store.list_by_tier(tier).await?;
+                    let filtered: Vec<_> = memories
+                        .into_iter()
+                        .filter(|m| {
+                            if let Some(ref session_id) = self.session {
+                                m.conversation_id.as_deref() == Some(session_id.as_str())
+                            } else if self.global {
+                                m.conversation_id.is_none()
+                            } else {
+                                true
+                            }
+                        })
+                        .collect();
+
+                    match tier {
+                        StorageTier::Hot => hot = filtered,
+                        StorageTier::Warm => warm = filtered,
+                        StorageTier::Cold => cold = filtered,
+                    }
+                }
+
+                (hot.len(), warm.len(), cold.len(), hot.len() + warm.len() + cold.len())
+            } else {
+                let hot_count = store.count_by_tier(StorageTier::Hot).await?;
+                let warm_count = store.count_by_tier(StorageTier::Warm).await?;
+                let cold_count = store.count_by_tier(StorageTier::Cold).await?;
+                let total_count = store.total_count().await?;
+                (hot_count, warm_count, cold_count, total_count)
+            };
 
         let estimate_hot_size = estimate_memory_size(hot_count);
         let estimate_warm_size = estimate_memory_size(warm_count);

@@ -21,6 +21,8 @@ pub struct MemoryFilter {
     pub since: Option<DateTime<Utc>>,
     /// Filter to specific conversation
     pub conversation_id: Option<String>,
+    /// Session filter: None = not set, Some(None) = global only, Some(Some(id)) = session or global
+    pub session_filter: Option<Option<String>>,
 }
 
 impl MemoryFilter {
@@ -50,6 +52,14 @@ impl MemoryFilter {
     /// Filter by conversation ID
     pub fn with_conversation_id(mut self, conversation_id: String) -> Self {
         self.conversation_id = Some(conversation_id);
+        self
+    }
+
+    /// Filter by session ID with NULL awareness.
+    /// When `Some(id)`: matches memories for that session OR global memories (conversation_id IS NULL)
+    /// When `None`: matches only global memories (conversation_id IS NULL)
+    pub fn with_session_filter(mut self, session_id: Option<String>) -> Self {
+        self.session_filter = Some(session_id);
         self
     }
 
@@ -99,6 +109,22 @@ impl MemoryFilter {
             conditions.push(format!("conversation_id = '{conv_id}'"));
         }
 
+        // Session filter with NULL awareness
+        if let Some(ref session_opt) = self.session_filter {
+            match session_opt {
+                Some(session_id) => {
+                    // Session specified: match session memories OR global memories
+                    conditions.push(format!(
+                        "(conversation_id = '{session_id}' OR conversation_id IS NULL)"
+                    ));
+                }
+                None => {
+                    // Explicitly None: match only global memories
+                    conditions.push("conversation_id IS NULL".to_string());
+                }
+            }
+        }
+
         if conditions.is_empty() {
             None
         } else {
@@ -112,6 +138,7 @@ impl MemoryFilter {
             && self.min_weight.is_none()
             && self.since.is_none()
             && self.conversation_id.is_none()
+            && self.session_filter.is_none()
     }
 }
 
@@ -181,5 +208,24 @@ mod tests {
 
         let sql = filter.to_sql_clause().unwrap();
         assert!(sql.contains("created_at >= "));
+    }
+
+    #[test]
+    fn test_session_filter_with_session() {
+        let filter = MemoryFilter::new().with_session_filter(Some("session-abc".to_string()));
+
+        let sql = filter.to_sql_clause().unwrap();
+        assert_eq!(
+            sql,
+            "(conversation_id = 'session-abc' OR conversation_id IS NULL)"
+        );
+    }
+
+    #[test]
+    fn test_session_filter_global_only() {
+        let filter = MemoryFilter::new().with_session_filter(None);
+
+        let sql = filter.to_sql_clause().unwrap();
+        assert_eq!(sql, "conversation_id IS NULL");
     }
 }

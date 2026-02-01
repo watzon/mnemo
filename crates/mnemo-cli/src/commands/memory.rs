@@ -46,6 +46,16 @@ pub struct ListArgs {
         help = "Filter by memory type (episodic, semantic, procedural)"
     )]
     pub r#type: Option<String>,
+
+    #[clap(long, help = "Filter to memories in this session/project")]
+    pub session: Option<String>,
+
+    #[clap(
+        long,
+        help = "Show only global memories (no session)",
+        conflicts_with = "session"
+    )]
+    pub global: bool,
 }
 
 #[derive(Parser)]
@@ -105,6 +115,13 @@ impl MemoryCommand {
 
         if let Some(type_filter) = type_filter {
             memories.retain(|m| m.memory_type == type_filter);
+        }
+
+        // Session filtering
+        if let Some(ref session_id) = args.session {
+            memories.retain(|m| m.conversation_id.as_deref() == Some(session_id.as_str()));
+        } else if args.global {
+            memories.retain(|m| m.conversation_id.is_none());
         }
 
         memories.sort_by(|a, b| b.created_at.cmp(&a.created_at));

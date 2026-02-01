@@ -5,6 +5,7 @@ mod passthrough;
 mod provider;
 pub mod providers;
 mod server;
+mod session;
 mod streaming;
 
 pub use capture::ResponseCapture;
@@ -16,7 +17,8 @@ pub use error::{
 pub use injection::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
 };
-pub use server::{AppState, ProxyServer, create_router};
 pub use passthrough::UpstreamTarget;
 pub use provider::Provider;
+pub use server::{AppState, ProxyServer, create_router};
+pub use session::{SessionId, SessionIdError};
 pub use streaming::{BufferHandle, ExtractedContent, SseEvent, StreamingProxy, TeeResult};
