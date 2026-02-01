@@ -1,5 +1,9 @@
 # Mnemo
 
+<p align="center">
+  <img src="media/mnemo-banner.png" alt="Mnemo" width="600">
+</p>
+
 [![Build Status](https://img.shields.io/github/actions/workflow/status/watzon/mnemo/ci.yml)](https://github.com/watzon/mnemo/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Rust Version](https://img.shields.io/badge/rust-1.85%2B-orange.svg)](https://www.rust-lang.org)
