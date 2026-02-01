@@ -27,11 +27,13 @@ use crate::error::{MnemoError, Result};
 use crate::memory::retrieval::RetrievalPipeline;
 use crate::router::MemoryRouter;
 use crate::storage::LanceStore;
+use crate::storage::filter::MemoryFilter;
 use serde_json::Value;
 
 use super::passthrough::UpstreamTarget;
 use super::provider::Provider;
 use super::providers::{AnthropicProvider, LLMProvider, OpenAiProvider};
+use super::session::SessionId;
 
 /// Hop-by-hop headers that should not be forwarded to upstream
 const HOP_BY_HOP_HEADERS: &[&str] = &[
@@ -294,7 +296,19 @@ async fn forward_request(
         .await
         .map_err(|e| super::ProxyError::Request(format!("Failed to read request body: {e}")))?;
 
-    let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes).await {
+    // Extract session ID from headers
+    let session_id: Option<String> = headers
+        .get("x-mnemo-session-id")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| {
+            SessionId::try_from(s)
+                .map(|sid| sid.as_str().to_string())
+                .map_err(|e| tracing::debug!("Invalid session ID: {}", e))
+                .ok()
+        })
+        .flatten();
+
+    let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes, session_id).await {
         Ok(modified) => modified,
         Err(e) => {
             tracing::debug!("Memory injection skipped: {e}");
@@ -421,6 +435,7 @@ async fn try_inject_memories(
     target_url: &Url,
     headers: &HeaderMap,
     body_bytes: &[u8],
+    session_id: Option<String>,
 ) -> crate::error::Result<Vec<u8>> {
     let mut body_json: Value = serde_json::from_slice(body_bytes)
         .map_err(|e| crate::error::MnemoError::Proxy(format!("Invalid JSON: {e}")))?;
@@ -441,9 +456,10 @@ async fn try_inject_memories(
     };
 
     let store = state.store.lock().await;
+    let filter = MemoryFilter::new().with_session_filter(session_id);
     let mut pipeline = RetrievalPipeline::with_defaults(&store, &state.embedding_model);
     let memories = pipeline
-        .retrieve(&query, state.router_config.max_memories)
+        .retrieve_filtered(&query, &filter, state.router_config.max_memories)
         .await?;
     drop(store);
 

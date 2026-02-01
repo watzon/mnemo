@@ -26,6 +26,9 @@ pub enum MemorySubcommand {
     #[clap(about = "Delete a memory")]
     Delete(DeleteArgs),
 
+    #[clap(about = "Convert a session memory to global (removes session association)")]
+    Globalize(GlobalizeArgs),
+
     #[clap(about = "Manually add a memory")]
     Add(AddArgs),
 }
@@ -71,6 +74,12 @@ pub struct DeleteArgs {
 }
 
 #[derive(Parser)]
+pub struct GlobalizeArgs {
+    #[clap(help = "Memory ID to globalize (UUID format)")]
+    pub id: String,
+}
+
+#[derive(Parser)]
 pub struct AddArgs {
     #[clap(help = "Memory content text")]
     pub text: String,
@@ -89,6 +98,7 @@ impl MemoryCommand {
             MemorySubcommand::List(args) => Self::list(store, args, format).await,
             MemorySubcommand::Show(args) => Self::show(store, args, format).await,
             MemorySubcommand::Delete(args) => Self::delete(store, args, format).await,
+            MemorySubcommand::Globalize(args) => Self::globalize(store, args, format).await,
             MemorySubcommand::Add(args) => Self::add(store, args, format).await,
         }
     }
@@ -252,6 +262,48 @@ impl MemoryCommand {
                 } else {
                     println!("Memory {} not found.", args.id);
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    async fn globalize(store: &LanceStore, args: &GlobalizeArgs, format: OutputFormat) -> CliResult<()> {
+        let id = Uuid::parse_str(&args.id).map_err(|e| format!("Invalid UUID format: {e}"))?;
+
+        let memory = store
+            .get(id)
+            .await?
+            .ok_or_else(|| format!("Memory not found: {}", args.id))?;
+
+        if memory.conversation_id.is_none() {
+            match format {
+                OutputFormat::Json => {
+                    let output = serde_json::json!({
+                        "id": args.id,
+                        "already_global": true,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&output)?);
+                }
+                OutputFormat::Table => {
+                    println!("Memory {} is already global.", args.id);
+                }
+            }
+            return Ok(());
+        }
+
+        store.update_conversation_id(id, None).await?;
+
+        match format {
+            OutputFormat::Json => {
+                let output = serde_json::json!({
+                    "id": args.id,
+                    "globalized": true,
+                });
+                println!("{}", serde_json::to_string_pretty(&output)?);
+            }
+            OutputFormat::Table => {
+                println!("Memory {} has been globalized.", args.id);
             }
         }
 

@@ -1013,6 +1013,33 @@ impl LanceStore {
         Ok(())
     }
 
+    /// Update the conversation_id of a memory
+    pub async fn update_conversation_id(
+        &self,
+        id: Uuid,
+        conversation_id: Option<String>,
+    ) -> Result<bool> {
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| MnemoError::Storage("Memories table not initialized".to_string()))?;
+
+        let conv_id_value = match conversation_id {
+            Some(ref id) => format!("'{}'", id),
+            None => "NULL".to_string(),
+        };
+
+        let update_result = table
+            .update()
+            .only_if(format!("id = '{}'", id))
+            .column("conversation_id", conv_id_value)
+            .execute()
+            .await
+            .map_err(|e| MnemoError::Storage(format!("Failed to update memory: {e}")))?;
+
+        Ok(update_result.rows_updated > 0)
+    }
+
     /// Search for similar memories using vector similarity (ANN search)
     pub async fn search(&self, embedding: &[f32], limit: usize) -> Result<Vec<Memory>> {
         self.search_filtered(embedding, &MemoryFilter::default(), limit)
