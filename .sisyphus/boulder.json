@@ -1,1 +1,6 @@
-{"active_plan":null,"started_at":null,"session_ids":[],"plan_name":null}
+{
+  "active_plan": "/Users/watzon/Projects/personal/nova-memory/crates/mnemo/.sisyphus/plans/anthropic-support.md",
+  "started_at": "2026-02-01T05:11:00.052Z",
+  "session_ids": ["ses_3e8868fc8ffeM05M77W1XC7fRN"],
+  "plan_name": "anthropic-support"
+}
