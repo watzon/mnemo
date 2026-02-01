@@ -42,3 +42,4 @@ data/
 # Example/test data directories
 test-data/
 examples/*/test-data/
+.sisyphus/
