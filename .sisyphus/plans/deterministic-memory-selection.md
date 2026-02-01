@@ -60,10 +60,10 @@ Implement opt-in deterministic memory selection using stable scoring (quantizati
 - Integration tests in `tests/retrieval_determinism_tests.rs`
 
 ### Definition of Done
-- [ ] `cargo test --workspace -- --test-threads=1` passes
-- [ ] `cargo clippy --workspace -- -D warnings` passes
-- [ ] Same query + same memories → byte-identical ordering
-- [ ] `deterministic = false` behavior unchanged from baseline
+- [x] `cargo test --workspace -- --test-threads=1` passes
+- [x] `cargo clippy --workspace -- -D warnings` passes
+- [x] Same query + same memories → byte-identical ordering
+- [x] `deterministic = false` behavior unchanged from baseline
 
 ### Must Have
 - Opt-in via config (default disabled)
@@ -558,14 +558,14 @@ cargo test -p mnemo determinism -- --test-threads=1 --nocapture
 ```
 
 ### Final Checklist
-- [ ] DeterministicConfig struct exists with all fields
-- [ ] RouterConfig includes deterministic settings
-- [ ] `retrieve()` and `retrieve_by_embedding()` support deterministic mode
-- [ ] Score quantization implemented with configurable precision
-- [ ] Topic overlap scoring implemented using Memory.entities
-- [ ] Deterministic sorting uses `total_cmp()` with timestamp+UUID tiebreakers
-- [ ] config.example.toml updated with new settings
-- [ ] 5 integration tests pass
-- [ ] All "Must Have" present
-- [ ] All "Must NOT Have" absent
-- [ ] `cargo clippy` passes with no warnings
+- [x] DeterministicConfig struct exists with all fields
+- [x] RouterConfig includes deterministic settings
+- [x] `retrieve()` and `retrieve_by_embedding()` support deterministic mode
+- [x] Score quantization implemented with configurable precision
+- [x] Topic overlap scoring implemented using Memory.entities
+- [x] Deterministic sorting uses `total_cmp()` with timestamp+UUID tiebreakers
+- [x] config.example.toml updated with new settings
+- [x] 5 integration tests pass
+- [x] All "Must Have" present
+- [x] All "Must NOT Have" absent
+- [x] `cargo clippy` passes with no warnings
