@@ -14,15 +14,15 @@ use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
 use mnemo::config::{ProxyConfig, RouterConfig};
+use mnemo::embedding::EmbeddingModel;
 use mnemo::memory::retrieval::RetrievedMemory;
-use mnemo::proxy::{AppState, create_router};
 use mnemo::memory::types::{Memory, MemorySource, MemoryType};
+use mnemo::proxy::{AppState, create_router};
 use mnemo::proxy::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
 };
-use mnemo::storage::LanceStore;
-use mnemo::embedding::EmbeddingModel;
 use mnemo::router::MemoryRouter;
+use mnemo::storage::LanceStore;
 use tokio::sync::Mutex as TokioMutex;
 
 // =============================================================================
@@ -998,7 +998,9 @@ mod passthrough_tests {
         // Configure mock to verify body content
         Mock::given(matchers::method("POST"))
             .and(matchers::path("/echo"))
-            .and(matchers::body_json(serde_json::json!({"message": "hello world"})))
+            .and(matchers::body_json(
+                serde_json::json!({"message": "hello world"}),
+            ))
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(serde_json::json!({"echo": "received"})),
             )

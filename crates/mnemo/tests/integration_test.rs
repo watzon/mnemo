@@ -22,7 +22,6 @@ use tempfile::TempDir;
 use tower::ServiceExt;
 
 use mnemo::memory::ingestion::IngestionPipeline;
-use mnemo::testing::SHARED_EMBEDDING_MODEL;
 use mnemo::memory::retrieval::{RetrievalPipeline, RetrievedMemory};
 use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
 use mnemo::proxy::{
@@ -33,6 +32,7 @@ use mnemo::storage::LanceStore;
 use mnemo::storage::compaction::Compactor;
 use mnemo::storage::eviction::{CapacityStatus, EvictionConfig, Evictor};
 use mnemo::storage::tiers::TierManager;
+use mnemo::testing::SHARED_EMBEDDING_MODEL;
 
 // =============================================================================
 // Test Fixtures and Helpers

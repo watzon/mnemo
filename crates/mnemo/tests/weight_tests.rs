@@ -5,9 +5,7 @@
 
 use chrono::{Duration, Utc};
 use mnemo::memory::types::{Memory, MemorySource, MemoryType};
-use mnemo::memory::weight::{
-    WeightConfig, calculate_effective_weight, calculate_initial_weight,
-};
+use mnemo::memory::weight::{WeightConfig, calculate_effective_weight, calculate_initial_weight};
 use mnemo::router::{Entity, EntityLabel, RouterOutput};
 
 fn create_test_memory(content: &str, weight: f32, access_count: u32, age_days: i64) -> Memory {

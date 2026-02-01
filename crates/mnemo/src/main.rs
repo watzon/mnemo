@@ -55,8 +55,8 @@ async fn run() -> Result<()> {
 }
 
 fn init_logging() {
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info,mnemo=debug"));
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info,mnemo=debug"));
 
     tracing_subscriber::registry()
         .with(filter)

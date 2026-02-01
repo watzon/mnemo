@@ -3,7 +3,7 @@
 mod anthropic;
 mod openai;
 
-pub use anthropic::{parse_anthropic_sse, AnthropicProvider};
+pub use anthropic::{AnthropicProvider, parse_anthropic_sse};
 pub use openai::OpenAiProvider;
 
 use crate::error::Result;

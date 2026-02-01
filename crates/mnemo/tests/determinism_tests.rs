@@ -26,7 +26,11 @@ async fn create_test_store() -> (LanceStore, TempDir) {
     (store, temp_dir)
 }
 
-fn create_memory_with_entities(content: &str, entities: Vec<String>, embedding: Vec<f32>) -> Memory {
+fn create_memory_with_entities(
+    content: &str,
+    entities: Vec<String>,
+    embedding: Vec<f32>,
+) -> Memory {
     let mut memory = Memory::new(
         content.to_string(),
         embedding,

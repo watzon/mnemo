@@ -1,10 +1,10 @@
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
+use mnemo::storage::LanceStore;
 use mnemo_cli::commands::{CompactCommand, ConfigCommand, MemoryCommand, StatsCommand};
 use mnemo_cli::error::CliResult;
 use mnemo_cli::output::OutputFormat;
-use mnemo::storage::LanceStore;
 
 #[derive(Parser)]
 #[command(name = "mnemo-cli")]

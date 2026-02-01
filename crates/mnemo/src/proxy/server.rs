@@ -348,8 +348,12 @@ async fn forward_request(
     for (name, value) in response.headers().iter() {
         let name_str = name.as_str().to_lowercase();
         if !HOP_BY_HOP_HEADERS.contains(&name_str.as_str()) {
-            if let Ok(axum_name) = axum::http::header::HeaderName::from_bytes(name.as_str().as_bytes()) {
-                if let Ok(axum_value) = axum::http::header::HeaderValue::from_bytes(value.as_bytes()) {
+            if let Ok(axum_name) =
+                axum::http::header::HeaderName::from_bytes(name.as_str().as_bytes())
+            {
+                if let Ok(axum_value) =
+                    axum::http::header::HeaderValue::from_bytes(value.as_bytes())
+                {
                     response_headers.insert(axum_name, axum_value);
                 }
             }
@@ -437,18 +441,13 @@ async fn try_inject_memories(
     };
 
     let store = state.store.lock().await;
-    let mut pipeline =
-        RetrievalPipeline::with_defaults(&store, &state.embedding_model);
+    let mut pipeline = RetrievalPipeline::with_defaults(&store, &state.embedding_model);
     let memories = pipeline
         .retrieve(&query, state.router_config.max_memories)
         .await?;
     drop(store);
 
-    llm_provider.inject_memories(
-        &mut body_json,
-        &memories,
-        state.config.max_injection_tokens,
-    )?;
+    llm_provider.inject_memories(&mut body_json, &memories, state.config.max_injection_tokens)?;
 
     let modified = serde_json::to_vec(&body_json)
         .map_err(|e| crate::error::MnemoError::Proxy(format!("Failed to serialize: {e}")))?;
@@ -513,9 +512,7 @@ mod tests {
     use axum::http::Request;
     use tower::ServiceExt;
 
-    async fn create_test_state_with_allowed_hosts(
-        allowed_hosts: Vec<String>,
-    ) -> Arc<AppState> {
+    async fn create_test_state_with_allowed_hosts(allowed_hosts: Vec<String>) -> Arc<AppState> {
         let temp_dir = tempfile::tempdir().unwrap();
         let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
         store.create_memories_table().await.unwrap();
@@ -557,7 +554,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
-        
+
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -581,7 +578,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::NOT_FOUND);
-        
+
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -605,7 +602,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::BAD_REQUEST);
-        
+
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();
@@ -615,8 +612,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_dynamic_passthrough_blocked_host() {
-        let state =
-            create_test_state_with_allowed_hosts(vec!["api.openai.com".to_string()]).await;
+        let state = create_test_state_with_allowed_hosts(vec!["api.openai.com".to_string()]).await;
         let app = create_router(state);
 
         let response = app
@@ -630,7 +626,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::FORBIDDEN);
-        
+
         let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
             .await
             .unwrap();

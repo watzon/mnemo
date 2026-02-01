@@ -169,14 +169,17 @@ impl<'a> RetrievalPipeline<'a> {
                     self.config.rerank_weight,
                 );
 
-                if let (true, Some(det_config), Some(q_entities)) =
-                    (deterministic, &self.config.deterministic_config, query_entities)
-                {
-                    let topic_score =
-                        topic_overlap_score(q_entities, &retrieved.memory.entities);
+                if let (true, Some(det_config), Some(q_entities)) = (
+                    deterministic,
+                    &self.config.deterministic_config,
+                    query_entities,
+                ) {
+                    let topic_score = topic_overlap_score(q_entities, &retrieved.memory.entities);
                     let topic_boost = topic_score * det_config.topic_overlap_weight;
-                    retrieved.final_score =
-                        quantize_score(retrieved.final_score + topic_boost, det_config.decimal_places);
+                    retrieved.final_score = quantize_score(
+                        retrieved.final_score + topic_boost,
+                        det_config.decimal_places,
+                    );
                 }
 
                 retrieved
@@ -269,14 +272,17 @@ impl<'a> RetrievalPipeline<'a> {
                     self.config.rerank_weight,
                 );
 
-                if let (true, Some(det_config), Some(q_entities)) =
-                    (deterministic, &self.config.deterministic_config, query_entities)
-                {
-                    let topic_score =
-                        topic_overlap_score(q_entities, &retrieved.memory.entities);
+                if let (true, Some(det_config), Some(q_entities)) = (
+                    deterministic,
+                    &self.config.deterministic_config,
+                    query_entities,
+                ) {
+                    let topic_score = topic_overlap_score(q_entities, &retrieved.memory.entities);
                     let topic_boost = topic_score * det_config.topic_overlap_weight;
-                    retrieved.final_score =
-                        quantize_score(retrieved.final_score + topic_boost, det_config.decimal_places);
+                    retrieved.final_score = quantize_score(
+                        retrieved.final_score + topic_boost,
+                        det_config.decimal_places,
+                    );
                 }
 
                 retrieved

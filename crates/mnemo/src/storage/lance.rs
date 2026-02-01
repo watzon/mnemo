@@ -522,7 +522,11 @@ impl LanceStore {
             "Hot" => StorageTier::Hot,
             "Warm" => StorageTier::Warm,
             "Cold" => StorageTier::Cold,
-            other => return Err(MnemoError::Storage(format!("Unknown storage tier: {other}"))),
+            other => {
+                return Err(MnemoError::Storage(format!(
+                    "Unknown storage tier: {other}"
+                )));
+            }
         };
 
         // Parse compression
@@ -674,7 +678,9 @@ impl LanceStore {
             .column(6)
             .as_any()
             .downcast_ref::<StringArray>()
-            .ok_or_else(|| MnemoError::Storage("Failed to get reason_details column".to_string()))?;
+            .ok_or_else(|| {
+                MnemoError::Storage("Failed to get reason_details column".to_string())
+            })?;
 
         // Parse original_id
         let original_id = Uuid::parse_str(original_id_array.value(row))
