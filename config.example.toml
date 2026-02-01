@@ -94,6 +94,28 @@ max_memories = 10
 # Default: 0.7
 relevance_threshold = 0.7
 
+# -----------------------------------------------------------------------------
+# DETERMINISTIC RETRIEVAL (for improved LLM cache hit rates)
+# -----------------------------------------------------------------------------
+# When enabled, similar queries produce identical memory orderings,
+# improving cache efficiency with providers like Anthropic that cache
+# based on prompt prefixes.
+
+[router.deterministic]
+# Enable deterministic memory retrieval ordering
+# Default: false
+enabled = false
+
+# Score quantization precision (decimal places 1-4)
+# Lower values = more cache hits but less precision
+# Default: 2
+decimal_places = 2
+
+# Weight for topic/entity overlap in scoring (0.0-1.0)
+# Memories matching query entities get boosted by this factor
+# Default: 0.1
+topic_overlap_weight = 0.1
+
 # =============================================================================
 # EMBEDDING CONFIGURATION
 # =============================================================================

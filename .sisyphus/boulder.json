@@ -1,9 +1,8 @@
 {
-  "active_plan": "/Users/watzon/Projects/personal/nova-memory/.sisyphus/plans/dynamic-passthrough.md",
-  "started_at": "2026-02-01T00:10:44.028Z",
+  "active_plan": "/Users/watzon/Projects/personal/nova-memory/.sisyphus/plans/deterministic-memory-selection.md",
+  "started_at": "2026-02-01T03:54:25.982Z",
   "session_ids": [
-    "ses_3e976604dffeyFtwnwuUOeAvZP",
-    "ses_3e94801b2ffe6kb9DvZC78hpHM"
+    "ses_3e8ca4ff3ffeFUFlneCn1667Mz"
   ],
-  "plan_name": "dynamic-passthrough"
+  "plan_name": "deterministic-memory-selection"
 }

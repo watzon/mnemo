@@ -120,6 +120,9 @@ pub struct RouterConfig {
     /// Minimum relevance score threshold (placeholder)
     #[serde(default = "default_relevance_threshold")]
     pub relevance_threshold: f32,
+    /// Deterministic retrieval settings for improved LLM cache hit rates
+    #[serde(default)]
+    pub deterministic: DeterministicConfig,
 }
 
 impl Default for RouterConfig {
@@ -128,6 +131,7 @@ impl Default for RouterConfig {
             strategy: String::new(),
             max_memories: default_max_memories(),
             relevance_threshold: default_relevance_threshold(),
+            deterministic: DeterministicConfig::default(),
         }
     }
 }
@@ -138,6 +142,42 @@ fn default_max_memories() -> usize {
 
 fn default_relevance_threshold() -> f32 {
     0.7
+}
+
+/// Deterministic retrieval configuration for improved LLM cache hit rates
+#[derive(Debug, Clone, Deserialize)]
+pub struct DeterministicConfig {
+    /// Enable deterministic memory retrieval ordering
+    #[serde(default = "default_deterministic_enabled")]
+    pub enabled: bool,
+    /// Number of decimal places for score quantization (1-4)
+    #[serde(default = "default_decimal_places")]
+    pub decimal_places: u8,
+    /// Weight for topic/entity overlap scoring (0.0-1.0)
+    #[serde(default = "default_topic_overlap_weight")]
+    pub topic_overlap_weight: f32,
+}
+
+impl Default for DeterministicConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_deterministic_enabled(),
+            decimal_places: default_decimal_places(),
+            topic_overlap_weight: default_topic_overlap_weight(),
+        }
+    }
+}
+
+fn default_deterministic_enabled() -> bool {
+    false
+}
+
+fn default_decimal_places() -> u8 {
+    2
+}
+
+fn default_topic_overlap_weight() -> f32 {
+    0.1
 }
 
 /// Embedding model configuration
@@ -307,5 +347,31 @@ allowed_hosts = ["api.openai.com", "api.anthropic.com"]
         assert_eq!(config.proxy.allowed_hosts.len(), 2);
         assert_eq!(config.proxy.allowed_hosts[0], "api.openai.com");
         assert_eq!(config.proxy.allowed_hosts[1], "api.anthropic.com");
+    }
+
+    #[test]
+    fn test_deterministic_config_defaults() {
+        let config = Config::default();
+        assert!(!config.router.deterministic.enabled);
+        assert_eq!(config.router.deterministic.decimal_places, 2);
+        assert!((config.router.deterministic.topic_overlap_weight - 0.1).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_deterministic_config_from_toml() {
+        let toml_str = r#"
+[router]
+strategy = "semantic"
+
+[router.deterministic]
+enabled = true
+decimal_places = 3
+topic_overlap_weight = 0.2
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+        assert!(config.router.deterministic.enabled);
+        assert_eq!(config.router.deterministic.decimal_places, 3);
+        assert!((config.router.deterministic.topic_overlap_weight - 0.2).abs() < f32::EPSILON);
     }
 }

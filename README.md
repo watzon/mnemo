@@ -29,7 +29,7 @@ Mnemo is a Rust daemon that sits between your chat client and LLM API (OpenAI-co
 
 ```
 ┌─────────────┐     ┌──────────────────┐     ┌─────────────┐
-│   Client    │────▶│   Mnemo    │────▶│  LLM API    │
+│   Client    │────▶│   Mnemo    │────▶│     │  LLM API    │
 │  (Chat App) │◀────│  (Proxy Daemon)  │◀────│ (OpenAI/    │
 └─────────────┘     └──────────────────┘     │ Anthropic)  │
                            │                 └─────────────┘
@@ -279,6 +279,26 @@ Memories are injected into system prompts using a structured XML format:
 ### Token Budget
 
 The `max_injection_tokens` configuration limits how much memory content is injected per request. Memories are sorted by relevance and included until the budget is exhausted.
+
+### LLM Provider Caching
+
+Many LLM providers (notably Anthropic) offer prompt caching that can significantly reduce costs and latency for repeated requests. However, since Mnemo injects different memories based on semantic similarity to each query, the system prompt changes between requests, which can reduce cache hit rates.
+
+To maximize cache efficiency, Mnemo supports **deterministic memory selection**:
+
+```toml
+[router.deterministic]
+enabled = true          # Enable deterministic ordering
+decimal_places = 2      # Score quantization precision
+topic_overlap_weight = 0.1  # Boost for entity overlap
+```
+
+When enabled, this feature:
+- **Quantizes similarity scores** to reduce floating-point variance
+- **Boosts memories with entity overlap** for more predictable selection
+- **Uses deterministic tie-breaking** (older timestamp → UUID) for consistent ordering
+
+This means queries about the same topic will more reliably retrieve the same memories in the same order, improving cache hit rates while maintaining semantic relevance.
 
 ## Development
 
