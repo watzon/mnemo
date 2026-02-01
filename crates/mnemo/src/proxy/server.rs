@@ -311,13 +311,12 @@ async fn forward_request(
     let session_id: Option<String> = headers
         .get("x-mnemo-session-id")
         .and_then(|v| v.to_str().ok())
-        .map(|s| {
+        .and_then(|s| {
             SessionId::try_from(s)
                 .map(|sid| sid.as_str().to_string())
-                .map_err(|e| tracing::debug!("Invalid session ID: {}", e))
+                .map_err(|e| tracing::debug!("Invalid session ID: {e}"))
                 .ok()
-        })
-        .flatten();
+        });
 
     let promote_to_global = headers
         .get("x-mnemo-promote-response")
@@ -443,15 +442,9 @@ async fn try_capture_response(
     };
 
     let result = if let Ok(response_json) = serde_json::from_slice::<Value>(response_body) {
-        if let Some(content) = llm_provider.parse_response_content(&response_json) {
-            if !content.trim().is_empty() {
-                Some(content)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
+        llm_provider
+            .parse_response_content(&response_json)
+            .filter(|content| !content.trim().is_empty())
     } else if let Ok(response_str) = std::str::from_utf8(response_body) {
         let extracted = llm_provider.parse_sse_content(response_str);
         if !extracted.content.trim().is_empty() {

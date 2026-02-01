@@ -1025,13 +1025,13 @@ impl LanceStore {
             .ok_or_else(|| MnemoError::Storage("Memories table not initialized".to_string()))?;
 
         let conv_id_value = match conversation_id {
-            Some(ref id) => format!("'{}'", id),
+            Some(ref id) => format!("'{id}'"),
             None => "NULL".to_string(),
         };
 
         let update_result = table
             .update()
-            .only_if(format!("id = '{}'", id))
+            .only_if(format!("id = '{id}'"))
             .column("conversation_id", conv_id_value)
             .execute()
             .await
