@@ -57,8 +57,17 @@ hyper-util = { version = "0.1", features = ["full"] }
 tower = { version = "0.5" }
 tower-http = { version = "0.6", features = ["trace", "timeout"] }
 
+# HTTP client
+reqwest = { version = "0.12", features = ["rustls-tls", "json"] }
+
+# URL parsing
+url = "2"
+
 # Temporary directories for testing
 tempfile = "3"
+
+# Testing mock servers
+wiremock = "0.6"
 
 # CLI
 clap = { version = "4", features = ["derive"] }
