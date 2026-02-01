@@ -1,7 +1,7 @@
 # Mnemo
 
 <p align="center">
-  <img src="media/mnemo-banner.png" alt="Mnemo" width="600">
+  <img src="media/mnemo-banner.webp" alt="Mnemo" width="600">
 </p>
 
 [![Build Status](https://img.shields.io/github/actions/workflow/status/watzon/mnemo/ci.yml)](https://github.com/watzon/mnemo/actions)
