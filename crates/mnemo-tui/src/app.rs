@@ -487,7 +487,7 @@ General
         mut reconnect_rx: watch::Receiver<()>,
     ) {
         let client = Client::new();
-        let url = format!("{}/admin/events", daemon_url);
+        let url = format!("{daemon_url}/admin/events");
         let mut backoff_secs = 1u64;
         const MAX_BACKOFF: u64 = 30;
 

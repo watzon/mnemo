@@ -122,11 +122,11 @@ impl RequestLogView {
                     .unwrap_or_else(|| "...".to_string());
                 let latency_str = entry
                     .latency_ms
-                    .map(|l| format!("{}ms", l))
+                    .map(|l| format!("{l}ms"))
                     .unwrap_or_else(|| "...".to_string());
 
                 let status_style = match entry.status {
-                    Some(s) if s >= 200 && s < 300 => Style::default().fg(Color::Green),
+                    Some(s) if (200..300).contains(&s) => Style::default().fg(Color::Green),
                     Some(s) if s >= 400 => Style::default().fg(Color::Red),
                     _ => Style::default(),
                 };

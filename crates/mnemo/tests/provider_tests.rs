@@ -6,7 +6,7 @@ use axum::http::HeaderMap;
 use serde_json::json;
 use url::Url;
 
-use mnemo::proxy::Provider;
+use mnemo_server::proxy::Provider;
 
 // =============================================================================
 // URL-based Detection Tests

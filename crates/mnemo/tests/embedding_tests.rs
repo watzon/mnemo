@@ -3,8 +3,8 @@
 //! Tests the EmbeddingModel implementation with real model loading.
 //! Uses SHARED_EMBEDDING_MODEL to avoid repeated model loading across tests.
 
-use mnemo::embedding::EMBEDDING_DIMENSION;
-use mnemo::testing::SHARED_EMBEDDING_MODEL;
+use mnemo_server::embedding::EMBEDDING_DIMENSION;
+use mnemo_server::testing::SHARED_EMBEDDING_MODEL;
 
 /// Calculate cosine similarity between two vectors
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
@@ -15,7 +15,7 @@ fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {
 }
 
 /// Get reference to the shared embedding model
-fn get_model() -> &'static mnemo::embedding::EmbeddingModel {
+fn get_model() -> &'static mnemo_server::embedding::EmbeddingModel {
     &*SHARED_EMBEDDING_MODEL
 }
 

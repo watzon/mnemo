@@ -21,18 +21,18 @@ use serde_json::json;
 use tempfile::TempDir;
 use tower::ServiceExt;
 
-use mnemo::memory::ingestion::IngestionPipeline;
-use mnemo::memory::retrieval::{RetrievalPipeline, RetrievedMemory};
-use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
-use mnemo::proxy::{
+use mnemo_server::memory::ingestion::IngestionPipeline;
+use mnemo_server::memory::retrieval::{RetrievalPipeline, RetrievedMemory};
+use mnemo_server::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
+use mnemo_server::proxy::{
     ResponseCapture, SseEvent, StreamingProxy, estimate_tokens, extract_user_query,
     format_memory_block, inject_memories, truncate_to_budget,
 };
-use mnemo::storage::LanceStore;
-use mnemo::storage::compaction::Compactor;
-use mnemo::storage::eviction::{CapacityStatus, EvictionConfig, Evictor};
-use mnemo::storage::tiers::TierManager;
-use mnemo::testing::SHARED_EMBEDDING_MODEL;
+use mnemo_server::storage::LanceStore;
+use mnemo_server::storage::compaction::Compactor;
+use mnemo_server::storage::eviction::{CapacityStatus, EvictionConfig, Evictor};
+use mnemo_server::storage::tiers::TierManager;
+use mnemo_server::testing::SHARED_EMBEDDING_MODEL;
 
 // =============================================================================
 // Test Fixtures and Helpers

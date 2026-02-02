@@ -5,7 +5,7 @@
 
 use bytes::Bytes;
 use futures::stream::{self, StreamExt};
-use mnemo::proxy::{SseEvent, StreamingProxy};
+use mnemo_server::proxy::{SseEvent, StreamingProxy};
 
 mod sse_event_parsing_tests {
     use super::*;
@@ -241,7 +241,7 @@ data: [DONE]
 
 mod tee_stream_tests {
     use super::*;
-    use mnemo::proxy::TeeResult;
+    use mnemo_server::proxy::TeeResult;
 
     #[tokio::test]
     async fn test_tee_stream_forwards_all_chunks() {
@@ -365,7 +365,7 @@ data: [DONE]
 
 mod buffer_handle_tests {
     use super::*;
-    use mnemo::proxy::TeeResult;
+    use mnemo_server::proxy::TeeResult;
 
     #[tokio::test]
     async fn test_buffer_handle_get_raw_content() {

@@ -13,11 +13,11 @@
 use chrono::{Duration, Utc};
 use tempfile::TempDir;
 
-use mnemo::config::DeterministicConfig;
-use mnemo::memory::retrieval::{RetrievalConfig, RetrievalPipeline};
-use mnemo::memory::types::{Memory, MemorySource, MemoryType};
-use mnemo::storage::LanceStore;
-use mnemo::testing::SHARED_EMBEDDING_MODEL;
+use mnemo_server::config::DeterministicConfig;
+use mnemo_server::memory::retrieval::{RetrievalConfig, RetrievalPipeline};
+use mnemo_server::memory::types::{Memory, MemorySource, MemoryType};
+use mnemo_server::storage::LanceStore;
+use mnemo_server::testing::SHARED_EMBEDDING_MODEL;
 
 async fn create_test_store() -> (LanceStore, TempDir) {
     let temp_dir = tempfile::tempdir().unwrap();

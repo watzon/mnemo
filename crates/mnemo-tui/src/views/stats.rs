@@ -46,7 +46,7 @@ impl StatsView {
             )
             .gauge_style(Style::default().fg(Color::Cyan))
             .ratio(ratio)
-            .label(format!("{}", total));
+            .label(format!("{total}"));
         frame.render_widget(total_gauge, chunks[1]);
 
         // Tier breakdown - three horizontal gauges
@@ -88,6 +88,6 @@ impl StatsView {
             )
             .gauge_style(Style::default().fg(color))
             .ratio(ratio)
-            .label(format!("{}", count))
+            .label(format!("{count}"))
     }
 }

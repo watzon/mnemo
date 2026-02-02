@@ -3,8 +3,8 @@
 //! Tests the CLI command implementations directly without spawning processes.
 
 use chrono::Utc;
-use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
-use mnemo::storage::LanceStore;
+use mnemo_server::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
+use mnemo_server::storage::LanceStore;
 use tempfile::tempdir;
 use uuid::Uuid;
 
@@ -381,7 +381,7 @@ mod stats_tests {
 mod compact_tests {
     use super::*;
     use chrono::Duration;
-    use mnemo::storage::{CompactionConfig, Compactor};
+    use mnemo_server::storage::{CompactionConfig, Compactor};
 
     #[tokio::test]
     async fn test_compact_empty_tier() {
@@ -462,7 +462,7 @@ mod compact_tests {
 }
 
 mod config_tests {
-    use mnemo::config::Config;
+    use mnemo_server::config::Config;
 
     #[test]
     fn test_default_config() {

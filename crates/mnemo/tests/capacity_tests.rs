@@ -3,9 +3,9 @@
 //! Tests tier migration, compaction, eviction, and tombstone functionality.
 
 use chrono::{Duration, Utc};
-use mnemo::memory::tombstone::{EvictionReason, Tombstone};
-use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
-use mnemo::storage::{
+use mnemo_server::memory::tombstone::{EvictionReason, Tombstone};
+use mnemo_server::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
+use mnemo_server::storage::{
     CompactionConfig, Compactor, EvictionConfig, Evictor, LanceStore, TierConfig, TierManager,
 };
 use tempfile::tempdir;
@@ -696,7 +696,7 @@ mod eviction_tests {
         store.insert_batch(&memories).await.unwrap();
 
         let status = evictor.check_capacity(StorageTier::Hot).await.unwrap();
-        assert_eq!(status, mnemo::storage::CapacityStatus::Normal);
+        assert_eq!(status, mnemo_server::storage::CapacityStatus::Normal);
     }
 
     #[tokio::test]
@@ -715,7 +715,7 @@ mod eviction_tests {
         store.insert_batch(&memories).await.unwrap();
 
         let status = evictor.check_capacity(StorageTier::Hot).await.unwrap();
-        assert_eq!(status, mnemo::storage::CapacityStatus::Warning);
+        assert_eq!(status, mnemo_server::storage::CapacityStatus::Warning);
     }
 
     #[tokio::test]
@@ -734,7 +734,7 @@ mod eviction_tests {
         store.insert_batch(&memories).await.unwrap();
 
         let status = evictor.check_capacity(StorageTier::Hot).await.unwrap();
-        assert_eq!(status, mnemo::storage::CapacityStatus::EvictionNeeded);
+        assert_eq!(status, mnemo_server::storage::CapacityStatus::EvictionNeeded);
     }
 
     #[tokio::test]
@@ -755,7 +755,7 @@ mod eviction_tests {
         let status = evictor.check_capacity(StorageTier::Hot).await.unwrap();
         assert_eq!(
             status,
-            mnemo::storage::CapacityStatus::AggressiveEvictionNeeded
+            mnemo_server::storage::CapacityStatus::AggressiveEvictionNeeded
         );
     }
 

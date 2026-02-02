@@ -67,7 +67,7 @@ impl RequestDetailView {
                     .map(|s| s.to_string())
                     .unwrap_or_else(|| "Pending...".to_string()),
                 req.latency_ms
-                    .map(|l| format!("{}ms", l))
+                    .map(|l| format!("{l}ms"))
                     .unwrap_or_else(|| "...".to_string()),
             );
 

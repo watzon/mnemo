@@ -3,9 +3,9 @@
 //! Tests the full end-to-end ingestion flow from text to stored memory.
 //! These tests verify filtering, memory creation, and storage integration.
 
-use mnemo::memory::ingestion::IngestionPipeline;
-use mnemo::memory::types::{CompressionLevel, MemorySource, MemoryType, StorageTier};
-use mnemo::storage::LanceStore;
+use mnemo_server::memory::ingestion::IngestionPipeline;
+use mnemo_server::memory::types::{CompressionLevel, MemorySource, MemoryType, StorageTier};
+use mnemo_server::storage::LanceStore;
 use tempfile::tempdir;
 
 /// Test helper: Create a test store in a temporary directory

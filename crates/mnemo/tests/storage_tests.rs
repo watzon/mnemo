@@ -2,8 +2,8 @@
 //!
 //! Tests the LanceStore implementation with real database operations.
 
-use mnemo::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
-use mnemo::storage::LanceStore;
+use mnemo_server::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
+use mnemo_server::storage::LanceStore;
 use tempfile::tempdir;
 use uuid::Uuid;
 

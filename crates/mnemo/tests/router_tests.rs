@@ -3,9 +3,9 @@
 //! Tests the MemoryRouter implementation with real NER model loading.
 //! These tests verify entity extraction, sentiment detection, and routing decisions.
 
-use mnemo::memory::types::MemoryType;
-use mnemo::router::{EntityLabel, MemoryRouter};
-use mnemo::testing::SHARED_MEMORY_ROUTER;
+use mnemo_server::memory::types::MemoryType;
+use mnemo_server::router::{EntityLabel, MemoryRouter};
+use mnemo_server::testing::SHARED_MEMORY_ROUTER;
 
 /// Test helper to get the shared router instance
 fn get_router() -> &'static MemoryRouter {

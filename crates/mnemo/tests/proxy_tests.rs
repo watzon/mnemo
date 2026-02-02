@@ -13,17 +13,19 @@ use std::sync::Arc;
 use tower::ServiceExt;
 use wiremock::{Mock, MockServer, ResponseTemplate, matchers};
 
-use mnemo::config::{ProxyConfig, RouterConfig};
-use mnemo::embedding::EmbeddingModel;
-use mnemo::memory::retrieval::RetrievedMemory;
-use mnemo::memory::types::{Memory, MemorySource, MemoryType};
-use mnemo::proxy::{AppState, create_router};
-use mnemo::proxy::{
+use dashmap::DashMap;
+use mnemo_server::config::{ProxyConfig, RouterConfig};
+use mnemo_server::curator::ConversationBuffer;
+use mnemo_server::embedding::EmbeddingModel;
+use mnemo_server::memory::retrieval::RetrievedMemory;
+use mnemo_server::memory::types::{Memory, MemorySource, MemoryType};
+use mnemo_server::proxy::{AppState, create_router};
+use mnemo_server::proxy::{
     estimate_tokens, extract_user_query, format_memory_block, inject_memories, truncate_to_budget,
 };
-use mnemo::router::MemoryRouter;
-use mnemo::storage::LanceStore;
-use tokio::sync::Mutex as TokioMutex;
+use mnemo_server::router::MemoryRouter;
+use mnemo_server::storage::LanceStore;
+use tokio::sync::{broadcast, Mutex as TokioMutex};
 
 // =============================================================================
 // Test Fixtures
@@ -573,12 +575,13 @@ mod passthrough_tests {
         let embedding_model = Arc::new(EmbeddingModel::new().unwrap());
         let router = Arc::new(MemoryRouter::new().unwrap());
         let ingestion_pipeline = Arc::new(TokioMutex::new(
-            mnemo::memory::ingestion::IngestionPipeline::new(
+            mnemo_server::memory::ingestion::IngestionPipeline::new(
                 store.clone(),
                 embedding_model.clone(),
                 router.clone(),
             ),
         ));
+        let (event_tx, _) = broadcast::channel(100);
         let state = Arc::new(AppState {
             config,
             client: reqwest::Client::builder()
@@ -590,6 +593,10 @@ mod passthrough_tests {
             router,
             router_config: RouterConfig::default(),
             ingestion_pipeline,
+            event_tx,
+            curator: None,
+            conversation_buffers: Arc::new(DashMap::new()),
+            curator_config: None,
         });
         create_router(state)
     }

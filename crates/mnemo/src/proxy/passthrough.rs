@@ -32,7 +32,7 @@ impl UpstreamTarget {
     ///
     /// # Examples
     /// ```
-    /// # use mnemo::proxy::UpstreamTarget;
+    /// # use mnemo_server::proxy::UpstreamTarget;
     /// let target = UpstreamTarget::from_path(
     ///     "/p/https://api.openai.com/v1/chat/completions",
     ///     None

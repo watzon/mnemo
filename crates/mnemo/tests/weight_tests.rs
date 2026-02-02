@@ -4,9 +4,9 @@
 //! and emotional boost functionality.
 
 use chrono::{Duration, Utc};
-use mnemo::memory::types::{Memory, MemorySource, MemoryType};
-use mnemo::memory::weight::{WeightConfig, calculate_effective_weight, calculate_initial_weight};
-use mnemo::router::{Entity, EntityLabel, RouterOutput};
+use mnemo_server::memory::types::{Memory, MemorySource, MemoryType};
+use mnemo_server::memory::weight::{WeightConfig, calculate_effective_weight, calculate_initial_weight};
+use mnemo_server::router::{Entity, EntityLabel, RouterOutput};
 
 fn create_test_memory(content: &str, weight: f32, access_count: u32, age_days: i64) -> Memory {
     let mut memory = Memory::new(

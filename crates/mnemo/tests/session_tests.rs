@@ -6,11 +6,11 @@
 //! IMPORTANT: Run with --test-threads=1 due to ML model loading contention.
 //! `cargo test -p mnemo --test session_tests -- --test-threads=1`
 
-use mnemo::memory::types::{Memory, MemorySource, MemoryType};
-use mnemo::proxy::{SessionId, SessionIdError};
-use mnemo::storage::filter::MemoryFilter;
-use mnemo::storage::LanceStore;
-use mnemo::testing::MockEmbeddingModel;
+use mnemo_server::memory::types::{Memory, MemorySource, MemoryType};
+use mnemo_server::proxy::{SessionId, SessionIdError};
+use mnemo_server::storage::filter::MemoryFilter;
+use mnemo_server::storage::LanceStore;
+use mnemo_server::testing::MockEmbeddingModel;
 use tempfile::tempdir;
 
 // =============================================================================

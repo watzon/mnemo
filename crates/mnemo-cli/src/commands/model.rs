@@ -105,7 +105,7 @@ impl ModelCommand {
             .get("config.json")
             .map_err(|e| format!("Failed to download config: {e}"))?;
 
-        let repo_path = models_dir.join(format!("models--{}", model_dir_name));
+        let repo_path = models_dir.join(format!("models--{model_dir_name}"));
 
         pb.finish_with_message(format!("Downloaded to {}", repo_path.display()));
 
