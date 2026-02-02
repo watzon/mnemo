@@ -49,6 +49,7 @@ tokenizers = { workspace = true }
 clap = { workspace = true }
 urlencoding = "2.1"
 lru = { workspace = true }
+dashmap = { workspace = true }
 
 # Optional dependencies for local curator
 mistralrs = { version = "0.7", optional = true }

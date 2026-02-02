@@ -78,6 +78,9 @@ comfy-table = "7"
 # Caching
 lru = "0.12"
 
+# Concurrent hash map
+dashmap = "6"
+
 # Machine learning (Candle)
 candle-core = "0.9"
 candle-nn = "0.9"

@@ -160,6 +160,7 @@ async fn serve(config_path: Option<PathBuf>) -> Result<()> {
         embedding_model,
         router,
         config.router.clone(),
+        Some(config.curator.clone()),
     );
     tracing::info!("Starting proxy server on {}", config.proxy.listen_addr);
 

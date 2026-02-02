@@ -13,6 +13,7 @@ use axum::{
     response::Response,
     routing::{any, get},
 };
+use dashmap::DashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
@@ -27,7 +28,8 @@ use chrono::Utc;
 
 use crate::admin::handlers::{events_handler, memories_handler, stats_handler};
 use crate::admin::{DaemonStats, ProxyEvent};
-use crate::config::{ProxyConfig, RouterConfig};
+use crate::config::{CuratorConfig, ProxyConfig, RouterConfig};
+use crate::curator::{ConversationBuffer, ConversationTurn, CuratorProvider, RemoteCurator, Role};
 use crate::embedding::EmbeddingModel;
 use crate::error::{MnemoError, Result};
 use crate::memory::ingestion::IngestionPipeline;
@@ -54,44 +56,38 @@ const HOP_BY_HOP_HEADERS: &[&str] = &[
     "upgrade",
 ];
 
-/// Shared application state for all handlers
 #[derive(Clone)]
 pub struct AppState {
-    /// Proxy configuration
     pub config: ProxyConfig,
-    /// HTTP client for upstream requests
     pub client: reqwest::Client,
-    /// Storage backend for memories
     pub store: Arc<TokioMutex<LanceStore>>,
-    /// Embedding model for vector generation
     pub embedding_model: Arc<EmbeddingModel>,
-    /// Memory router for query analysis and routing
     pub router: Arc<MemoryRouter>,
-    /// Router configuration
     pub router_config: RouterConfig,
-    /// Ingestion pipeline for storing captured responses
     pub ingestion_pipeline: Arc<TokioMutex<IngestionPipeline>>,
-    /// Event broadcaster for admin clients
     pub event_tx: broadcast::Sender<ProxyEvent>,
+    pub curator: Option<Arc<dyn CuratorProvider + Send + Sync>>,
+    pub conversation_buffers: Arc<DashMap<String, ConversationBuffer>>,
+    pub curator_config: Option<CuratorConfig>,
 }
 
-/// The main proxy server
 pub struct ProxyServer {
     config: ProxyConfig,
     store: Arc<TokioMutex<LanceStore>>,
     embedding_model: Arc<EmbeddingModel>,
     router: Arc<MemoryRouter>,
     router_config: RouterConfig,
+    curator_config: Option<CuratorConfig>,
 }
 
 impl ProxyServer {
-    /// Create a new proxy server with the given configuration and components
     pub fn new(
         config: ProxyConfig,
         store: Arc<TokioMutex<LanceStore>>,
         embedding_model: Arc<EmbeddingModel>,
         router: Arc<MemoryRouter>,
         router_config: RouterConfig,
+        curator_config: Option<CuratorConfig>,
     ) -> Self {
         Self {
             config,
@@ -99,10 +95,10 @@ impl ProxyServer {
             embedding_model,
             router,
             router_config,
+            curator_config,
         }
     }
 
-    /// Start the proxy server and listen for requests
     pub async fn serve(&self) -> Result<()> {
         let client = reqwest::Client::builder()
             .timeout(Duration::from_secs(self.config.timeout_secs))
@@ -117,6 +113,63 @@ impl ProxyServer {
 
         let (event_tx, _) = broadcast::channel::<ProxyEvent>(1024);
 
+        let curator: Option<Arc<dyn CuratorProvider + Send + Sync>> =
+            if let Some(ref config) = self.curator_config {
+                if !config.enabled {
+                    tracing::info!("Curator disabled, using blind storage");
+                    None
+                } else {
+                    match config.provider.as_str() {
+                        "remote" => match RemoteCurator::new(&config.remote) {
+                            Ok(c) => {
+                                tracing::info!("Initialized remote curator");
+                                Some(Arc::new(c))
+                            }
+                            Err(e) => {
+                                tracing::warn!("Failed to init remote curator: {}", e);
+                                None
+                            }
+                        },
+                        #[cfg(feature = "curator-local")]
+                        "local" => {
+                            use crate::curator::LocalCurator;
+                            match LocalCurator::new(&config.local).await {
+                                Ok(c) => {
+                                    tracing::info!("Initialized local curator");
+                                    Some(Arc::new(c))
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to init local curator: {}", e);
+                                    None
+                                }
+                            }
+                        }
+                        #[cfg(feature = "curator-local")]
+                        "hybrid" => {
+                            use crate::curator::{HybridCurator, LocalCurator};
+                            let local = LocalCurator::new(&config.local).await.ok();
+                            let remote = RemoteCurator::new(&config.remote).ok();
+                            if local.is_some() || remote.is_some() {
+                                tracing::info!("Initialized hybrid curator");
+                                Some(Arc::new(HybridCurator::new(local, remote)))
+                            } else {
+                                tracing::warn!("No curator providers available for hybrid");
+                                None
+                            }
+                        }
+                        other => {
+                            tracing::warn!(
+                                "Unknown curator provider '{}', using blind storage",
+                                other
+                            );
+                            None
+                        }
+                    }
+                }
+            } else {
+                None
+            };
+
         let app_state = Arc::new(AppState {
             config: self.config.clone(),
             client,
@@ -126,6 +179,9 @@ impl ProxyServer {
             router_config: self.router_config.clone(),
             ingestion_pipeline,
             event_tx: event_tx.clone(),
+            curator,
+            conversation_buffers: Arc::new(DashMap::new()),
+            curator_config: self.curator_config.clone(),
         });
 
         let app = create_router(app_state);
@@ -519,43 +575,142 @@ async fn try_capture_response(
         let final_session_id = if promote_to_global {
             None
         } else {
-            session_id
+            session_id.clone()
         };
-        let pipeline = state.ingestion_pipeline.clone();
-        let content_clone = content.clone();
-        let event_tx = state.event_tx.clone();
 
-        tokio::spawn(async move {
-            let mut pipeline = pipeline.lock().await;
-            match pipeline
-                .ingest(&content_clone, MemorySource::Conversation, final_session_id)
-                .await
-            {
-                Ok(Some(memory)) => {
-                    tracing::debug!(
-                        "Ingested response as memory {} (session: {:?})",
-                        memory.id,
-                        memory.conversation_id
-                    );
-                    let content_preview = if memory.content.len() > 100 {
-                        format!("{}...", &memory.content[..100])
-                    } else {
-                        memory.content.clone()
-                    };
-                    let _ = event_tx.send(ProxyEvent::MemoryIngested {
-                        memory_id: memory.id.to_string(),
-                        memory_type: format!("{:?}", memory.memory_type),
-                        content_preview,
-                    });
-                }
-                Ok(None) => {
-                    tracing::debug!("Response filtered by ingestion pipeline");
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to ingest response: {}", e);
-                }
+        if let Some(sid) = &session_id {
+            if let Some(ref curator_config) = state.curator_config {
+                let mut buffer = state
+                    .conversation_buffers
+                    .entry(sid.clone())
+                    .or_insert_with(|| ConversationBuffer::new(&curator_config.buffer));
+                buffer.push(ConversationTurn::new(Role::Assistant, content.clone()));
             }
-        });
+        }
+
+        if let Some(ref curator) = state.curator {
+            let buffer_context = session_id
+                .as_ref()
+                .and_then(|id| state.conversation_buffers.get(id))
+                .map(|b| b.to_prompt_context())
+                .unwrap_or_default();
+
+            let curator = Arc::clone(curator);
+            let pipeline = state.ingestion_pipeline.clone();
+            let event_tx = state.event_tx.clone();
+            let final_session = final_session_id.clone();
+            let content_for_fallback = content.clone();
+
+            tokio::spawn(async move {
+                match curator.curate(&buffer_context).await {
+                    Ok(curation_result) if curation_result.should_store => {
+                        let mut pipeline = pipeline.lock().await;
+                        for memory in curation_result.memories {
+                            match pipeline
+                                .ingest_curated(memory, final_session.clone())
+                                .await
+                            {
+                                Ok(mem) => {
+                                    tracing::debug!(
+                                        "Ingested curated memory {} (session: {:?})",
+                                        mem.id,
+                                        mem.conversation_id
+                                    );
+                                    let content_preview = if mem.content.len() > 100 {
+                                        format!("{}...", &mem.content[..100])
+                                    } else {
+                                        mem.content.clone()
+                                    };
+                                    let _ = event_tx.send(ProxyEvent::MemoryIngested {
+                                        memory_id: mem.id.to_string(),
+                                        memory_type: format!("{:?}", mem.memory_type),
+                                        content_preview,
+                                    });
+                                }
+                                Err(e) => {
+                                    tracing::warn!("Failed to ingest curated memory: {}", e);
+                                }
+                            }
+                        }
+                    }
+                    Ok(_) => {
+                        tracing::debug!("Curator decided not to store content");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Curator failed, falling back to blind storage: {}", e);
+                        let mut pipeline = pipeline.lock().await;
+                        match pipeline
+                            .ingest(
+                                &content_for_fallback,
+                                MemorySource::Conversation,
+                                final_session,
+                            )
+                            .await
+                        {
+                            Ok(Some(memory)) => {
+                                tracing::debug!(
+                                    "Fallback ingested response as memory {} (session: {:?})",
+                                    memory.id,
+                                    memory.conversation_id
+                                );
+                                let content_preview = if memory.content.len() > 100 {
+                                    format!("{}...", &memory.content[..100])
+                                } else {
+                                    memory.content.clone()
+                                };
+                                let _ = event_tx.send(ProxyEvent::MemoryIngested {
+                                    memory_id: memory.id.to_string(),
+                                    memory_type: format!("{:?}", memory.memory_type),
+                                    content_preview,
+                                });
+                            }
+                            Ok(None) => {
+                                tracing::debug!("Fallback: Response filtered by ingestion pipeline");
+                            }
+                            Err(e) => {
+                                tracing::warn!("Fallback ingestion failed: {}", e);
+                            }
+                        }
+                    }
+                }
+            });
+        } else {
+            let pipeline = state.ingestion_pipeline.clone();
+            let content_clone = content.clone();
+            let event_tx = state.event_tx.clone();
+
+            tokio::spawn(async move {
+                let mut pipeline = pipeline.lock().await;
+                match pipeline
+                    .ingest(&content_clone, MemorySource::Conversation, final_session_id)
+                    .await
+                {
+                    Ok(Some(memory)) => {
+                        tracing::debug!(
+                            "Ingested response as memory {} (session: {:?})",
+                            memory.id,
+                            memory.conversation_id
+                        );
+                        let content_preview = if memory.content.len() > 100 {
+                            format!("{}...", &memory.content[..100])
+                        } else {
+                            memory.content.clone()
+                        };
+                        let _ = event_tx.send(ProxyEvent::MemoryIngested {
+                            memory_id: memory.id.to_string(),
+                            memory_type: format!("{:?}", memory.memory_type),
+                            content_preview,
+                        });
+                    }
+                    Ok(None) => {
+                        tracing::debug!("Response filtered by ingestion pipeline");
+                    }
+                    Err(e) => {
+                        tracing::warn!("Failed to ingest response: {}", e);
+                    }
+                }
+            });
+        }
     }
 
     result
@@ -691,6 +846,9 @@ mod tests {
             router_config: RouterConfig::default(),
             ingestion_pipeline,
             event_tx,
+            curator: None,
+            conversation_buffers: Arc::new(DashMap::new()),
+            curator_config: None,
         })
     }
 

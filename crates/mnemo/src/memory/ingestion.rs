@@ -6,6 +6,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 
+use crate::curator::CuratedMemory;
 use crate::embedding::EmbeddingModel;
 use crate::error::Result;
 use crate::memory::types::{CompressionLevel, Memory, MemorySource, MemoryType, StorageTier};
@@ -112,12 +113,6 @@ impl IngestionPipeline {
         Ok(Some(memory))
     }
 
-    /// Determine the compression level based on content length.
-    ///
-    /// - < 100 chars: Full (preserve all content)
-    /// - < 500 chars: Summary (moderate compression)
-    /// - < 2000 chars: Keywords (significant compression)
-    /// - >= 2000 chars: Hash (reference only)
     fn determine_compression(length: usize) -> CompressionLevel {
         match length {
             0..100 => CompressionLevel::Full,
@@ -125,6 +120,30 @@ impl IngestionPipeline {
             500..2000 => CompressionLevel::Keywords,
             _ => CompressionLevel::Hash,
         }
+    }
+
+    pub async fn ingest_curated(
+        &mut self,
+        curated: CuratedMemory,
+        conversation_id: Option<String>,
+    ) -> Result<Memory> {
+        let embedding = self.embedding_model.embed(&curated.content)?;
+
+        let mut memory = Memory::new(
+            curated.content.clone(),
+            embedding,
+            curated.memory_type,
+            MemorySource::Conversation,
+        );
+        memory.conversation_id = conversation_id;
+        memory.entities = curated.entities;
+        memory.weight = curated.importance;
+        memory.compression = Self::determine_compression(curated.content.len());
+        memory.tier = StorageTier::Hot;
+
+        self.store.lock().await.insert(&memory).await?;
+
+        Ok(memory)
     }
 }
 
