@@ -346,7 +346,7 @@ async fn forward_request(
         request_id: request_id.clone(),
         method: method.to_string(),
         path: target_url.path().to_string(),
-        provider: format!("{:?}", provider),
+        provider: format!("{provider:?}"),
         timestamp: Utc::now(),
     });
 

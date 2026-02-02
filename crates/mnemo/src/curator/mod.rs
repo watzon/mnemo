@@ -4,9 +4,16 @@
 //! memories, determine importance, and identify what should be stored.
 
 pub mod buffer;
+#[cfg(feature = "curator-local")]
+pub mod local;
+pub mod prompts;
 pub mod provider;
+pub mod remote;
 pub mod types;
 
 pub use buffer::{ConversationBuffer, ConversationTurn, Role};
+#[cfg(feature = "curator-local")]
+pub use local::LocalCurator;
 pub use provider::CuratorProvider;
+pub use remote::RemoteCurator;
 pub use types::{CuratedMemory, CurationResult, CuratorError};
