@@ -5,10 +5,12 @@
 //! 2. Reranking based on effective weight (combining base weight, recency, access patterns)
 
 use std::collections::HashSet;
+use std::sync::{Arc, Mutex};
 
 use crate::config::DeterministicConfig;
 use crate::embedding::EmbeddingModel;
 use crate::error::Result;
+use crate::memory::injection_tracker::InjectionTracker;
 use crate::memory::types::Memory;
 use crate::memory::weight::{WeightConfig, calculate_effective_weight};
 use crate::storage::LanceStore;
@@ -61,6 +63,11 @@ pub struct RetrievalConfig {
     pub rerank_weight: f32,
     /// Deterministic retrieval settings (optional)
     pub deterministic_config: Option<DeterministicConfig>,
+    /// Enable injection tracking
+    pub injection_tracking_enabled: bool,
+    /// Penalty factor for already-injected memories (0.0-1.0)
+    /// A value of 0.3 means injected memories get 30% of their original score
+    pub injection_penalty_factor: f32,
 }
 
 impl Default for RetrievalConfig {
@@ -71,6 +78,8 @@ impl Default for RetrievalConfig {
             similarity_weight: 0.7,
             rerank_weight: 0.3,
             deterministic_config: None,
+            injection_tracking_enabled: true,
+            injection_penalty_factor: 0.3,
         }
     }
 }
@@ -83,6 +92,7 @@ pub struct RetrievalPipeline<'a> {
     store: &'a LanceStore,
     embedding_model: &'a EmbeddingModel,
     config: RetrievalConfig,
+    injection_tracker: Option<Arc<Mutex<InjectionTracker>>>,
 }
 
 impl<'a> RetrievalPipeline<'a> {
@@ -96,12 +106,28 @@ impl<'a> RetrievalPipeline<'a> {
             store,
             embedding_model,
             config,
+            injection_tracker: None,
         }
     }
 
     /// Create a pipeline with default configuration
     pub fn with_defaults(store: &'a LanceStore, embedding_model: &'a EmbeddingModel) -> Self {
         Self::new(store, embedding_model, RetrievalConfig::default())
+    }
+
+    /// Create a pipeline with an injection tracker for deduplication
+    pub fn with_injection_tracker(
+        store: &'a LanceStore,
+        embedding_model: &'a EmbeddingModel,
+        config: RetrievalConfig,
+        tracker: Arc<Mutex<InjectionTracker>>,
+    ) -> Self {
+        Self {
+            store,
+            embedding_model,
+            config,
+            injection_tracker: Some(tracker),
+        }
     }
 
     /// Retrieve memories matching a query text
@@ -157,6 +183,9 @@ impl<'a> RetrievalPipeline<'a> {
             .map(|c| c.enabled)
             .unwrap_or(false);
 
+        let injection_enabled = self.config.injection_tracking_enabled;
+        let penalty_factor = self.config.injection_penalty_factor;
+
         let mut results: Vec<RetrievedMemory> = candidates
             .into_iter()
             .map(|memory| {
@@ -182,6 +211,17 @@ impl<'a> RetrievalPipeline<'a> {
                     );
                 }
 
+                // Apply injection penalty if tracking is enabled and memory was injected
+                if injection_enabled {
+                    if let Some(ref tracker) = self.injection_tracker {
+                        if let Ok(mut guard) = tracker.lock() {
+                            if guard.was_injected(&retrieved.memory.id) {
+                                retrieved.final_score *= penalty_factor;
+                            }
+                        }
+                    }
+                }
+
                 retrieved
             })
             .collect();
@@ -205,6 +245,17 @@ impl<'a> RetrievalPipeline<'a> {
 
         for result in &results {
             self.store.update_access(result.memory.id).await?;
+        }
+
+        // Mark retrieved memories as injected if tracking is enabled
+        if injection_enabled {
+            if let Some(ref tracker) = self.injection_tracker {
+                if let Ok(mut guard) = tracker.lock() {
+                    for result in &results {
+                        guard.mark_injected(result.memory.id);
+                    }
+                }
+            }
         }
 
         Ok(results)
@@ -260,6 +311,9 @@ impl<'a> RetrievalPipeline<'a> {
             .map(|c| c.enabled)
             .unwrap_or(false);
 
+        let injection_enabled = self.config.injection_tracking_enabled;
+        let penalty_factor = self.config.injection_penalty_factor;
+
         let mut results: Vec<RetrievedMemory> = candidates
             .into_iter()
             .map(|memory| {
@@ -285,6 +339,17 @@ impl<'a> RetrievalPipeline<'a> {
                     );
                 }
 
+                // Apply injection penalty if tracking is enabled and memory was injected
+                if injection_enabled {
+                    if let Some(ref tracker) = self.injection_tracker {
+                        if let Ok(mut guard) = tracker.lock() {
+                            if guard.was_injected(&retrieved.memory.id) {
+                                retrieved.final_score *= penalty_factor;
+                            }
+                        }
+                    }
+                }
+
                 retrieved
             })
             .collect();
@@ -308,6 +373,17 @@ impl<'a> RetrievalPipeline<'a> {
 
         for result in &results {
             self.store.update_access(result.memory.id).await?;
+        }
+
+        // Mark retrieved memories as injected if tracking is enabled
+        if injection_enabled {
+            if let Some(ref tracker) = self.injection_tracker {
+                if let Ok(mut guard) = tracker.lock() {
+                    for result in &results {
+                        guard.mark_injected(result.memory.id);
+                    }
+                }
+            }
         }
 
         Ok(results)
@@ -693,6 +769,130 @@ mod tests {
                 results[0].final_score > results[1].final_score,
                 "Higher weight memory should have higher final_score"
             );
+        }
+
+        #[tokio::test]
+        async fn test_injection_tracking_penalty() {
+            use crate::memory::injection_tracker::InjectionTracker;
+            use std::sync::{Arc, Mutex};
+
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let memory = create_memory_with_embedding("Test memory for injection tracking", base_embedding.clone());
+            let id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            let mut embedding_model = EmbeddingModel::new().unwrap();
+            let tracker = Arc::new(Mutex::new(InjectionTracker::new(100)));
+
+            let mut config = RetrievalConfig::default();
+            config.injection_tracking_enabled = true;
+            config.injection_penalty_factor = 0.3;
+            // Set rerank weight to 0 so weight changes don't affect the score
+            config.rerank_weight = 0.0;
+            config.similarity_weight = 1.0;
+
+            let mut pipeline = RetrievalPipeline::with_injection_tracker(
+                &store,
+                &mut embedding_model,
+                config,
+                tracker.clone(),
+            );
+
+            // First retrieval - should get full similarity score
+            let results1 = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
+            assert_eq!(results1.len(), 1);
+            let first_score = results1[0].final_score;
+
+            // Second retrieval - should get penalized score
+            let results2 = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
+            assert_eq!(results2.len(), 1);
+            let second_score = results2[0].final_score;
+
+            // Verify the second score is penalized (should be ~30% of first)
+            let expected_penalized = first_score * 0.3;
+            assert!(
+                (second_score - expected_penalized).abs() < 0.01,
+                "Second score should be approximately {} (30% of {}), got: {}",
+                expected_penalized,
+                first_score,
+                second_score
+            );
+
+            // Verify the memory was marked as injected
+            let mut guard = tracker.lock().unwrap();
+            assert!(guard.was_injected(&id), "Memory should be marked as injected");
+        }
+
+        #[tokio::test]
+        async fn test_injection_tracking_disabled() {
+            use crate::memory::injection_tracker::InjectionTracker;
+            use std::sync::{Arc, Mutex};
+
+            let temp_dir = tempfile::tempdir().unwrap();
+            let mut store = LanceStore::connect(temp_dir.path()).await.unwrap();
+            store.create_memories_table().await.unwrap();
+
+            let base_embedding: Vec<f32> = vec![0.5; 384];
+            let memory = create_memory_with_embedding("Test memory", base_embedding.clone());
+            let id = memory.id;
+
+            store.insert(&memory).await.unwrap();
+
+            let mut embedding_model = EmbeddingModel::new().unwrap();
+            let tracker = Arc::new(Mutex::new(InjectionTracker::new(100)));
+
+            let mut config = RetrievalConfig::default();
+            config.injection_tracking_enabled = false; // Disabled
+            config.injection_penalty_factor = 0.3;
+            // Set rerank weight to 0 so weight changes don't affect the score
+            config.rerank_weight = 0.0;
+            config.similarity_weight = 1.0;
+
+            let mut pipeline = RetrievalPipeline::with_injection_tracker(
+                &store,
+                &mut embedding_model,
+                config,
+                tracker.clone(),
+            );
+
+            // First retrieval
+            let results1 = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
+            assert_eq!(results1.len(), 1);
+            let first_score = results1[0].final_score;
+
+            // Second retrieval - should NOT be penalized since tracking is disabled
+            let results2 = pipeline
+                .retrieve_by_embedding(&base_embedding, 10)
+                .await
+                .unwrap();
+            assert_eq!(results2.len(), 1);
+            let second_score = results2[0].final_score;
+
+            // Scores should be approximately equal (no penalty applied, only similarity matters)
+            assert!(
+                (first_score - second_score).abs() < 0.01,
+                "Scores should be equal when injection tracking is disabled: {} vs {}",
+                first_score,
+                second_score
+            );
+
+            // Verify the memory was NOT marked as injected (tracking is disabled)
+            let mut guard = tracker.lock().unwrap();
+            assert!(!guard.was_injected(&id), "Memory should NOT be marked as injected when tracking is disabled");
         }
     }
 }
