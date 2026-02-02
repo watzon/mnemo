@@ -5,6 +5,8 @@
 
 pub mod buffer;
 #[cfg(feature = "curator-local")]
+pub mod hybrid;
+#[cfg(feature = "curator-local")]
 pub mod local;
 pub mod prompts;
 pub mod provider;
@@ -12,6 +14,8 @@ pub mod remote;
 pub mod types;
 
 pub use buffer::{ConversationBuffer, ConversationTurn, Role};
+#[cfg(feature = "curator-local")]
+pub use hybrid::HybridCurator;
 #[cfg(feature = "curator-local")]
 pub use local::LocalCurator;
 pub use provider::CuratorProvider;
