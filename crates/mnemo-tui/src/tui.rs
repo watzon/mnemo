@@ -2,10 +2,10 @@
 
 use crossterm::{
     execute,
-    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
 use ratatui::prelude::*;
-use std::io::{self, stdout, Stdout};
+use std::io::{self, Stdout, stdout};
 
 /// Terminal UI wrapper
 pub struct Tui {
@@ -38,6 +38,15 @@ impl Tui {
     /// Get a mutable reference to the terminal for drawing
     pub fn terminal(&mut self) -> &mut Terminal<CrosstermBackend<Stdout>> {
         &mut self.terminal
+    }
+
+    /// Draw a frame using the provided render callback
+    pub fn draw<F>(&mut self, f: F) -> io::Result<()>
+    where
+        F: FnOnce(&mut ratatui::Frame),
+    {
+        self.terminal.draw(f)?;
+        Ok(())
     }
 }
 

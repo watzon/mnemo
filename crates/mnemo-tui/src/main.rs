@@ -6,7 +6,6 @@ use mnemo_tui::{App, Tui};
 #[command(about = "Real-time TUI dashboard for mnemo daemon")]
 #[command(version)]
 struct Args {
-    /// URL of the mnemo daemon (e.g., http://localhost:8420)
     #[arg(short, long, default_value = "http://localhost:8420")]
     daemon: String,
 }
@@ -14,8 +13,11 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args = Args::parse();
-    println!("Connecting to daemon at: {}", args.daemon);
 
-    // TODO: Initialize and run TUI in later tasks
+    let tui = Tui::new()?;
+    let mut app = App::new(args.daemon);
+
+    app.run(tui).await?;
+
     Ok(())
 }

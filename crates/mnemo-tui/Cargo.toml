@@ -20,9 +20,10 @@ mnemo-server = { version = "0.1.0", path = "../mnemo" }
 ratatui = { version = "0.30", features = ["crossterm"] }
 crossterm = "0.29"
 tokio = { workspace = true }
-reqwest = { workspace = true }
+reqwest = { workspace = true, features = ["stream"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 clap = { workspace = true }
 chrono = { workspace = true }
+futures = { workspace = true }
 anyhow = "1"
