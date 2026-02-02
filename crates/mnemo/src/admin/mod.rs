@@ -3,6 +3,8 @@
 //! Provides shared types for real-time event streaming and statistics
 //! between the daemon and admin clients.
 
+pub mod handlers;
+
 use crate::memory::types::Memory;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};

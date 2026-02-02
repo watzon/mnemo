@@ -5,7 +5,7 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::memory::types::MemoryType;
+use crate::memory::types::{MemoryType, StorageTier};
 
 /// Filter criteria for memory search operations.
 ///
@@ -23,6 +23,8 @@ pub struct MemoryFilter {
     pub conversation_id: Option<String>,
     /// Session filter: None = not set, Some(None) = global only, Some(Some(id)) = session or global
     pub session_filter: Option<Option<String>>,
+    /// Filter by storage tier
+    pub tier: Option<StorageTier>,
 }
 
 impl MemoryFilter {
@@ -66,6 +68,11 @@ impl MemoryFilter {
     /// allow SQL injection.
     pub fn with_session_filter(mut self, session_id: Option<String>) -> Self {
         self.session_filter = Some(session_id);
+        self
+    }
+
+    pub fn with_tier(mut self, tier: StorageTier) -> Self {
+        self.tier = Some(tier);
         self
     }
 
@@ -131,6 +138,16 @@ impl MemoryFilter {
             }
         }
 
+        // Tier filter
+        if let Some(ref tier) = self.tier {
+            let tier_str = match tier {
+                StorageTier::Hot => "Hot",
+                StorageTier::Warm => "Warm",
+                StorageTier::Cold => "Cold",
+            };
+            conditions.push(format!("tier = '{tier_str}'"));
+        }
+
         if conditions.is_empty() {
             None
         } else {
@@ -145,6 +162,7 @@ impl MemoryFilter {
             && self.since.is_none()
             && self.conversation_id.is_none()
             && self.session_filter.is_none()
+            && self.tier.is_none()
     }
 }
 

@@ -49,7 +49,7 @@ arrow-schema = "56"
 # Async utilities
 futures = "0.3"
 bytes = "1"
-tokio-stream = "0.1"
+tokio-stream = { version = "0.1", features = ["sync"] }
 
 # HTTP server (axum)
 axum = { version = "0.8", features = ["http2"] }

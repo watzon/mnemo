@@ -25,6 +25,7 @@ use uuid::Uuid;
 
 use chrono::Utc;
 
+use crate::admin::handlers::{events_handler, memories_handler, stats_handler};
 use crate::admin::{DaemonStats, ProxyEvent};
 use crate::config::{ProxyConfig, RouterConfig};
 use crate::embedding::EmbeddingModel;
@@ -181,6 +182,9 @@ impl ProxyServer {
 pub fn create_router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/health", get(health_handler))
+        .route("/admin/events", get(events_handler))
+        .route("/admin/stats", get(stats_handler))
+        .route("/admin/memories", get(memories_handler))
         .route("/p/{*upstream_url}", any(dynamic_proxy_handler))
         .fallback(configured_proxy_handler)
         .with_state(state)

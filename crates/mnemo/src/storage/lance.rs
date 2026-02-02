@@ -1193,6 +1193,59 @@ impl LanceStore {
 
         Ok(())
     }
+
+    pub async fn count_filtered(&self, filter: &MemoryFilter) -> Result<usize> {
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| MnemoError::Storage("Memories table not initialized".to_string()))?;
+
+        let sql_filter = filter.to_sql_clause();
+        let count = table
+            .count_rows(sql_filter)
+            .await
+            .map_err(|e| MnemoError::Storage(format!("Failed to count filtered: {e}")))?;
+
+        Ok(count)
+    }
+
+    pub async fn list_filtered(
+        &self,
+        filter: &MemoryFilter,
+        limit: usize,
+        offset: usize,
+    ) -> Result<Vec<Memory>> {
+        let table = self
+            .memories_table
+            .as_ref()
+            .ok_or_else(|| MnemoError::Storage("Memories table not initialized".to_string()))?;
+
+        let mut query = table.query().limit(limit).offset(offset);
+
+        if let Some(sql_filter) = filter.to_sql_clause() {
+            query = query.only_if(sql_filter);
+        }
+
+        let stream = query
+            .execute()
+            .await
+            .map_err(|e| MnemoError::Storage(format!("Failed to list filtered: {e}")))?;
+
+        let batches: Vec<RecordBatch> = stream
+            .try_collect()
+            .await
+            .map_err(|e| MnemoError::Storage(format!("Failed to collect results: {e}")))?;
+
+        let mut memories = Vec::new();
+        for batch in &batches {
+            for row in 0..batch.num_rows() {
+                let memory = Self::batch_to_memory(batch, row)?;
+                memories.push(memory);
+            }
+        }
+
+        Ok(memories)
+    }
 }
 
 #[cfg(test)]
