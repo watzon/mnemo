@@ -16,6 +16,9 @@ pub struct Config {
     /// Embedding model configuration
     #[serde(default)]
     pub embedding: EmbeddingConfig,
+    /// Memory curator configuration
+    #[serde(default)]
+    pub curator: CuratorConfig,
 }
 
 /// Storage tier configuration
@@ -216,6 +219,198 @@ fn default_embedding_batch_size() -> usize {
     32
 }
 
+/// Memory curator configuration for LLM-based memory management
+#[derive(Debug, Clone, Deserialize)]
+pub struct CuratorConfig {
+    /// Enable the memory curator
+    #[serde(default = "default_curator_enabled")]
+    pub enabled: bool,
+    /// Provider type: local, remote, or hybrid
+    #[serde(default = "default_curator_provider")]
+    pub provider: String,
+    /// Local LLM configuration
+    #[serde(default)]
+    pub local: LocalCuratorConfig,
+    /// Remote API configuration
+    #[serde(default)]
+    pub remote: RemoteCuratorConfig,
+    /// Conversation buffer configuration
+    #[serde(default)]
+    pub buffer: BufferConfig,
+    /// Injection tracking configuration
+    #[serde(default)]
+    pub injection_tracking: InjectionTrackingConfig,
+}
+
+impl Default for CuratorConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_curator_enabled(),
+            provider: default_curator_provider(),
+            local: LocalCuratorConfig::default(),
+            remote: RemoteCuratorConfig::default(),
+            buffer: BufferConfig::default(),
+            injection_tracking: InjectionTrackingConfig::default(),
+        }
+    }
+}
+
+fn default_curator_enabled() -> bool {
+    false
+}
+
+fn default_curator_provider() -> String {
+    "local".to_string()
+}
+
+/// Local LLM configuration for curator
+#[derive(Debug, Clone, Deserialize)]
+pub struct LocalCuratorConfig {
+    /// Model ID from HuggingFace or local path
+    #[serde(default = "default_local_model_id")]
+    pub model_id: String,
+    /// Quantization level (Q4K, Q5K, Q6K, Q8, F16, F32)
+    #[serde(default = "default_local_quantization")]
+    pub quantization: String,
+    /// Use GPU acceleration if available
+    #[serde(default = "default_local_use_gpu")]
+    pub use_gpu: bool,
+    /// Maximum context length in tokens
+    #[serde(default = "default_local_context_length")]
+    pub context_length: usize,
+}
+
+impl Default for LocalCuratorConfig {
+    fn default() -> Self {
+        Self {
+            model_id: default_local_model_id(),
+            quantization: default_local_quantization(),
+            use_gpu: default_local_use_gpu(),
+            context_length: default_local_context_length(),
+        }
+    }
+}
+
+fn default_local_model_id() -> String {
+    "Qwen/Qwen3-1.7B".to_string()
+}
+
+fn default_local_quantization() -> String {
+    "Q4K".to_string()
+}
+
+fn default_local_use_gpu() -> bool {
+    false
+}
+
+fn default_local_context_length() -> usize {
+    4096
+}
+
+/// Remote API configuration for curator
+#[derive(Debug, Clone, Deserialize)]
+pub struct RemoteCuratorConfig {
+    /// API endpoint URL
+    #[serde(default)]
+    pub api_url: String,
+    /// Environment variable name for API key
+    #[serde(default = "default_remote_api_key_env")]
+    pub api_key_env: String,
+    /// Model identifier for remote API
+    #[serde(default = "default_remote_model")]
+    pub model: String,
+    /// Request timeout in seconds
+    #[serde(default = "default_remote_timeout_secs")]
+    pub timeout_secs: u64,
+}
+
+impl Default for RemoteCuratorConfig {
+    fn default() -> Self {
+        Self {
+            api_url: String::new(),
+            api_key_env: default_remote_api_key_env(),
+            model: default_remote_model(),
+            timeout_secs: default_remote_timeout_secs(),
+        }
+    }
+}
+
+fn default_remote_api_key_env() -> String {
+    "CURATOR_API_KEY".to_string()
+}
+
+fn default_remote_model() -> String {
+    "gpt-4o-mini".to_string()
+}
+
+fn default_remote_timeout_secs() -> u64 {
+    30
+}
+
+/// Conversation buffer configuration
+#[derive(Debug, Clone, Deserialize)]
+pub struct BufferConfig {
+    /// Maximum number of conversation turns to buffer
+    #[serde(default = "default_buffer_max_turns")]
+    pub max_turns: usize,
+    /// Maximum tokens in buffer before triggering curation
+    #[serde(default = "default_buffer_max_tokens")]
+    pub max_tokens: usize,
+}
+
+impl Default for BufferConfig {
+    fn default() -> Self {
+        Self {
+            max_turns: default_buffer_max_turns(),
+            max_tokens: default_buffer_max_tokens(),
+        }
+    }
+}
+
+fn default_buffer_max_turns() -> usize {
+    10
+}
+
+fn default_buffer_max_tokens() -> usize {
+    8000
+}
+
+/// Injection tracking configuration for feedback loop
+#[derive(Debug, Clone, Deserialize)]
+pub struct InjectionTrackingConfig {
+    /// Enable injection tracking
+    #[serde(default = "default_injection_tracking_enabled")]
+    pub enabled: bool,
+    /// Maximum number of tracked injections
+    #[serde(default = "default_injection_tracking_max_entries")]
+    pub max_entries: usize,
+    /// Penalty factor for unused memories (0.0-1.0)
+    #[serde(default = "default_injection_tracking_penalty_factor")]
+    pub penalty_factor: f32,
+}
+
+impl Default for InjectionTrackingConfig {
+    fn default() -> Self {
+        Self {
+            enabled: default_injection_tracking_enabled(),
+            max_entries: default_injection_tracking_max_entries(),
+            penalty_factor: default_injection_tracking_penalty_factor(),
+        }
+    }
+}
+
+fn default_injection_tracking_enabled() -> bool {
+    true
+}
+
+fn default_injection_tracking_max_entries() -> usize {
+    1000
+}
+
+fn default_injection_tracking_penalty_factor() -> f32 {
+    0.3
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -373,5 +568,124 @@ topic_overlap_weight = 0.2
         assert!(config.router.deterministic.enabled);
         assert_eq!(config.router.deterministic.decimal_places, 3);
         assert!((config.router.deterministic.topic_overlap_weight - 0.2).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_curator_config_defaults() {
+        let config = Config::default();
+        assert!(!config.curator.enabled);
+        assert_eq!(config.curator.provider, "local");
+
+        // Local config defaults
+        assert_eq!(config.curator.local.model_id, "Qwen/Qwen3-1.7B");
+        assert_eq!(config.curator.local.quantization, "Q4K");
+        assert!(!config.curator.local.use_gpu);
+        assert_eq!(config.curator.local.context_length, 4096);
+
+        // Remote config defaults
+        assert_eq!(config.curator.remote.api_url, "");
+        assert_eq!(config.curator.remote.api_key_env, "CURATOR_API_KEY");
+        assert_eq!(config.curator.remote.model, "gpt-4o-mini");
+        assert_eq!(config.curator.remote.timeout_secs, 30);
+
+        // Buffer config defaults
+        assert_eq!(config.curator.buffer.max_turns, 10);
+        assert_eq!(config.curator.buffer.max_tokens, 8000);
+
+        // Injection tracking defaults
+        assert!(config.curator.injection_tracking.enabled);
+        assert_eq!(config.curator.injection_tracking.max_entries, 1000);
+        assert!((config.curator.injection_tracking.penalty_factor - 0.3).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_curator_config_from_toml() {
+        let toml_str = r#"
+[curator]
+enabled = true
+provider = "hybrid"
+
+[curator.local]
+model_id = "custom/model"
+quantization = "Q8"
+use_gpu = true
+context_length = 8192
+
+[curator.remote]
+api_url = "https://api.openai.com/v1/chat/completions"
+api_key_env = "OPENAI_API_KEY"
+model = "gpt-4"
+timeout_secs = 60
+
+[curator.buffer]
+max_turns = 20
+max_tokens = 16000
+
+[curator.injection_tracking]
+enabled = false
+max_entries = 500
+penalty_factor = 0.5
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+
+        // Curator main config
+        assert!(config.curator.enabled);
+        assert_eq!(config.curator.provider, "hybrid");
+
+        // Local config
+        assert_eq!(config.curator.local.model_id, "custom/model");
+        assert_eq!(config.curator.local.quantization, "Q8");
+        assert!(config.curator.local.use_gpu);
+        assert_eq!(config.curator.local.context_length, 8192);
+
+        // Remote config
+        assert_eq!(
+            config.curator.remote.api_url,
+            "https://api.openai.com/v1/chat/completions"
+        );
+        assert_eq!(config.curator.remote.api_key_env, "OPENAI_API_KEY");
+        assert_eq!(config.curator.remote.model, "gpt-4");
+        assert_eq!(config.curator.remote.timeout_secs, 60);
+
+        // Buffer config
+        assert_eq!(config.curator.buffer.max_turns, 20);
+        assert_eq!(config.curator.buffer.max_tokens, 16000);
+
+        // Injection tracking
+        assert!(!config.curator.injection_tracking.enabled);
+        assert_eq!(config.curator.injection_tracking.max_entries, 500);
+        assert!((config.curator.injection_tracking.penalty_factor - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn test_curator_config_partial_from_toml() {
+        // Test that partial curator config uses defaults for unspecified fields
+        let toml_str = r#"
+[curator]
+enabled = true
+
+[curator.local]
+use_gpu = true
+"#;
+
+        let config: Config = toml::from_str(toml_str).expect("Failed to parse TOML");
+
+        assert!(config.curator.enabled);
+        assert_eq!(config.curator.provider, "local"); // default
+
+        // Local config - only use_gpu overridden
+        assert_eq!(config.curator.local.model_id, "Qwen/Qwen3-1.7B"); // default
+        assert_eq!(config.curator.local.quantization, "Q4K"); // default
+        assert!(config.curator.local.use_gpu); // overridden
+        assert_eq!(config.curator.local.context_length, 4096); // default
+
+        // Remote config - all defaults
+        assert_eq!(config.curator.remote.api_url, "");
+        assert_eq!(config.curator.remote.api_key_env, "CURATOR_API_KEY");
+
+        // Buffer config - all defaults
+        assert_eq!(config.curator.buffer.max_turns, 10);
+        assert_eq!(config.curator.buffer.max_tokens, 8000);
     }
 }

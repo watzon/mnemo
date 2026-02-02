@@ -47,6 +47,7 @@ hf-hub = { workspace = true }
 tokenizers = { workspace = true }
 clap = { workspace = true }
 urlencoding = "2.1"
+lru = { workspace = true }
 
 [features]
 default = []

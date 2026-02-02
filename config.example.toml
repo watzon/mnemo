@@ -144,3 +144,93 @@ dimension = 1536
 # Larger batches are more efficient but use more memory
 # Default: 32
 batch_size = 32
+
+# =============================================================================
+# CURATOR CONFIGURATION
+# =============================================================================
+# The memory curator uses an LLM to analyze conversations and create
+# high-quality semantic memories. It can run locally (default) or use
+# a remote API for curation.
+
+[curator]
+# Enable the memory curator
+# Default: false
+enabled = false
+
+# Provider type: local, remote, or hybrid
+# Default: local
+provider = "local"
+
+# -----------------------------------------------------------------------------
+# LOCAL LLM CONFIGURATION (when provider = "local")
+# -----------------------------------------------------------------------------
+[curator.local]
+# Model ID from HuggingFace or local path
+# Default: Qwen/Qwen3-1.7B (small, fast, good quality)
+model_id = "Qwen/Qwen3-1.7B"
+
+# Quantization level for local model
+# Options: Q4K, Q5K, Q6K, Q8, F16, F32
+# Default: Q4K (good balance of speed and quality)
+quantization = "Q4K"
+
+# Use GPU acceleration if available
+# Default: false (CPU is safer default)
+use_gpu = false
+
+# Maximum context length in tokens
+# Default: 4096
+context_length = 4096
+
+# -----------------------------------------------------------------------------
+# REMOTE API CONFIGURATION (when provider = "remote" or "hybrid")
+# -----------------------------------------------------------------------------
+[curator.remote]
+# API endpoint URL (required for remote provider)
+# Examples:
+#   - OpenAI: https://api.openai.com/v1/chat/completions
+#   - Anthropic: https://api.anthropic.com/v1/messages
+# Default: (empty)
+api_url = ""
+
+# Environment variable name for API key
+# Default: CURATOR_API_KEY
+api_key_env = "CURATOR_API_KEY"
+
+# Model identifier for remote API
+# Default: gpt-4o-mini (cost-effective, good quality)
+model = "gpt-4o-mini"
+
+# Request timeout in seconds
+# Default: 30
+timeout_secs = 30
+
+# -----------------------------------------------------------------------------
+# CONVERSATION BUFFER CONFIGURATION
+# -----------------------------------------------------------------------------
+[curator.buffer]
+# Maximum number of conversation turns to buffer before curation
+# Default: 10
+max_turns = 10
+
+# Maximum tokens in buffer before triggering curation
+# Default: 8000
+max_tokens = 8000
+
+# -----------------------------------------------------------------------------
+# INJECTION TRACKING CONFIGURATION
+# -----------------------------------------------------------------------------
+[curator.injection_tracking]
+# Enable tracking of which injected memories were actually used
+# This creates a feedback loop to improve memory quality
+# Default: true
+enabled = true
+
+# Maximum number of tracked injections to store
+# Default: 1000
+max_entries = 1000
+
+# Penalty factor for memories that were injected but not referenced
+# Range: 0.0-1.0 (higher = more aggressive penalty)
+# Default: 0.3
+penalty_factor = 0.3

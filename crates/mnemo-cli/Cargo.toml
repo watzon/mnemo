@@ -28,4 +28,7 @@ chrono = { workspace = true }
 clap = { workspace = true }
 comfy-table = { workspace = true }
 dirs = { workspace = true }
+indicatif = "0.17"
+hf-hub = { workspace = true }
+walkdir = "2"
 mnemo-server = { version = "0.1.0", path = "../mnemo" }

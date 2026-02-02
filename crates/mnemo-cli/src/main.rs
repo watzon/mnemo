@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
 use mnemo_server::storage::LanceStore;
-use mnemo_cli::commands::{CompactCommand, ConfigCommand, MemoryCommand, StatsCommand};
+use mnemo_cli::commands::{CompactCommand, ConfigCommand, MemoryCommand, ModelCommand, StatsCommand};
 use mnemo_cli::error::CliResult;
 use mnemo_cli::output::OutputFormat;
 
@@ -28,6 +28,9 @@ pub struct Cli {
 pub enum Command {
     #[clap(about = "Memory management commands")]
     Memory(MemoryCommand),
+
+    #[clap(about = "Model management commands")]
+    Model(ModelCommand),
 
     #[clap(about = "Show storage statistics")]
     Stats(StatsCommand),
@@ -64,6 +67,7 @@ async fn run() -> CliResult<()> {
 
     match &cli.command {
         Command::Config(cmd) => cmd.execute(cli.config.as_deref(), format).await,
+        Command::Model(cmd) => cmd.execute(format).await,
         Command::Memory(_) | Command::Stats(_) | Command::Compact(_) => {
             let mut store = LanceStore::connect(&data_dir).await?;
 
@@ -83,7 +87,7 @@ async fn run() -> CliResult<()> {
                 Command::Memory(cmd) => cmd.execute(&store, format).await,
                 Command::Stats(cmd) => cmd.execute(&store, format).await,
                 Command::Compact(cmd) => cmd.execute(&store, format).await,
-                Command::Config(_) => unreachable!(),
+                Command::Config(_) | Command::Model(_) => unreachable!(),
             }
         }
     }

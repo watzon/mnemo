@@ -74,6 +74,9 @@ wiremock = "0.6"
 clap = { version = "4", features = ["derive"] }
 comfy-table = "7"
 
+# Caching
+lru = "0.12"
+
 # Machine learning (Candle)
 candle-core = "0.9"
 candle-nn = "0.9"
