@@ -3,6 +3,7 @@
 //! This crate provides a daemon that manages hierarchical memory storage
 //! with semantic search capabilities using vector embeddings.
 
+pub mod admin;
 pub mod cli;
 pub mod config;
 pub mod embedding;
