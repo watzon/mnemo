@@ -1,0 +1,28 @@
+[package]
+name = "mnemo-tui"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Real-time TUI dashboard for mnemo daemon"
+readme = "../../README.md"
+keywords = ["llm", "memory", "tui", "dashboard", "mnemo"]
+categories = ["command-line-utilities", "development-tools"]
+
+[[bin]]
+name = "mnemo-tui"
+path = "src/main.rs"
+
+[dependencies]
+mnemo-server = { version = "0.1.0", path = "../mnemo" }
+ratatui = { version = "0.30", features = ["crossterm"] }
+crossterm = "0.29"
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+clap = { workspace = true }
+chrono = { workspace = true }
+anyhow = "1"

@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/mnemo", "crates/mnemo-cli"]
+members = ["crates/mnemo", "crates/mnemo-cli", "crates/mnemo-tui"]
 resolver = "3"
 
 [workspace.package]
