@@ -18,9 +18,14 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::signal;
+use tokio::sync::broadcast;
 use tokio::sync::Mutex as TokioMutex;
 use url::Url;
+use uuid::Uuid;
 
+use chrono::Utc;
+
+use crate::admin::{DaemonStats, ProxyEvent};
 use crate::config::{ProxyConfig, RouterConfig};
 use crate::embedding::EmbeddingModel;
 use crate::error::{MnemoError, Result};
@@ -65,6 +70,8 @@ pub struct AppState {
     pub router_config: RouterConfig,
     /// Ingestion pipeline for storing captured responses
     pub ingestion_pipeline: Arc<TokioMutex<IngestionPipeline>>,
+    /// Event broadcaster for admin clients
+    pub event_tx: broadcast::Sender<ProxyEvent>,
 }
 
 /// The main proxy server
@@ -107,6 +114,8 @@ impl ProxyServer {
             self.router.clone(),
         )));
 
+        let (event_tx, _) = broadcast::channel::<ProxyEvent>(1024);
+
         let app_state = Arc::new(AppState {
             config: self.config.clone(),
             client,
@@ -115,9 +124,22 @@ impl ProxyServer {
             router: self.router.clone(),
             router_config: self.router_config.clone(),
             ingestion_pipeline,
+            event_tx: event_tx.clone(),
         });
 
         let app = create_router(app_state);
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                let stats = DaemonStats::default();
+                let _ = event_tx.send(ProxyEvent::Heartbeat {
+                    timestamp: Utc::now(),
+                    stats,
+                });
+            }
+        });
 
         let addr: SocketAddr = self
             .config
@@ -284,6 +306,9 @@ async fn forward_request(
     headers: HeaderMap,
     body: Body,
 ) -> std::result::Result<Response<Body>, super::ProxyError> {
+    let request_id = Uuid::new_v4().to_string();
+    let start_time = std::time::Instant::now();
+
     let mut forwarded_headers = HeaderMap::new();
     for (name, value) in headers.iter() {
         let name_str = name.as_str().to_lowercase();
@@ -307,6 +332,20 @@ async fn forward_request(
         .await
         .map_err(|e| super::ProxyError::Request(format!("Failed to read request body: {e}")))?;
 
+    let body_json: Option<serde_json::Value> = serde_json::from_slice(&body_bytes).ok();
+    let provider = body_json
+        .as_ref()
+        .map(|json| Provider::detect(target_url, &headers, json))
+        .unwrap_or(Provider::Unknown);
+
+    let _ = state.event_tx.send(ProxyEvent::RequestStarted {
+        request_id: request_id.clone(),
+        method: method.to_string(),
+        path: target_url.path().to_string(),
+        provider: format!("{:?}", provider),
+        timestamp: Utc::now(),
+    });
+
     // Extract session ID from headers
     let session_id: Option<String> = headers
         .get("x-mnemo-session-id")
@@ -325,7 +364,14 @@ async fn forward_request(
         .unwrap_or(false);
 
     let final_body = match try_inject_memories(state, target_url, &headers, &body_bytes, session_id.clone()).await {
-        Ok(modified) => modified,
+        Ok(modified) => {
+            let _ = state.event_tx.send(ProxyEvent::MemoriesInjected {
+                request_id: request_id.clone(),
+                memory_ids: vec![],
+                count: 0,
+            });
+            modified
+        }
         Err(e) => {
             tracing::debug!("Memory injection skipped: {e}");
             body_bytes.to_vec()
@@ -413,6 +459,15 @@ async fn forward_request(
         );
     }
 
+    let response_bytes = response_body.len() as u64;
+
+    let _ = state.event_tx.send(ProxyEvent::RequestCompleted {
+        request_id,
+        status: status.as_u16(),
+        latency_ms: start_time.elapsed().as_millis() as u64,
+        bytes: Some(response_bytes),
+    });
+
     let mut builder = Response::builder().status(status);
     for (name, value) in response_headers.iter() {
         builder = builder.header(name, value);
@@ -464,6 +519,7 @@ async fn try_capture_response(
         };
         let pipeline = state.ingestion_pipeline.clone();
         let content_clone = content.clone();
+        let event_tx = state.event_tx.clone();
 
         tokio::spawn(async move {
             let mut pipeline = pipeline.lock().await;
@@ -477,6 +533,16 @@ async fn try_capture_response(
                         memory.id,
                         memory.conversation_id
                     );
+                    let content_preview = if memory.content.len() > 100 {
+                        format!("{}...", &memory.content[..100])
+                    } else {
+                        memory.content.clone()
+                    };
+                    let _ = event_tx.send(ProxyEvent::MemoryIngested {
+                        memory_id: memory.id.to_string(),
+                        memory_type: format!("{:?}", memory.memory_type),
+                        content_preview,
+                    });
                 }
                 Ok(None) => {
                     tracing::debug!("Response filtered by ingestion pipeline");
@@ -604,6 +670,8 @@ mod tests {
             router.clone(),
         )));
 
+        let (event_tx, _) = broadcast::channel::<ProxyEvent>(16);
+
         Arc::new(AppState {
             config: ProxyConfig {
                 listen_addr: "127.0.0.1:9999".to_string(),
@@ -618,6 +686,7 @@ mod tests {
             router,
             router_config: RouterConfig::default(),
             ingestion_pipeline,
+            event_tx,
         })
     }
 
